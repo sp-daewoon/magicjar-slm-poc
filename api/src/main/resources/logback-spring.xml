@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="magicjar-api"/>
+    <springProperty scope="context" name="springActiveProfiles" source="spring.profiles.active" defaultValue="default"/>
+
+    <!--
+        ADR 0094 P0-OPS-1 — logback JSON encoder + MDC 5 키 표준화.
+          appender 매트릭스:
+            JSON_STDOUT (LogstashEncoder, 한 줄 JSON)  — 운영(prd) 검색·Loki ingestion 정합
+            PLAIN_STDOUT (PatternLayout, 사람 읽기 우선) — dev IDE 콘솔 친화
+          profile 분기:
+            dev → PLAIN_STDOUT (기존 패턴 보존, traceId 포함)
+            prd → JSON_STDOUT  (한 줄 JSON, MDC 자동 포함)
+            default(no profile) → PLAIN_STDOUT  (회귀 안전)
+
+        ADR 0084 P1-3 MDC traceId 분산 추적과 본질적 정합 — TraceIdServletFilter(HTTP) +
+        TraceIdKafkaRecordInterceptor(Kafka) + WebClient filter가 thread MDC `traceId` 부착 →
+        본 패턴이 자동 출력(plain) 또는 JSON field(includeMdcKeyName)로 자동 직렬화.
+
+        MDC 표준 5 키 (3 모듈 정합 LOCK):
+          traceId  — 분산 추적 ID (ADR 0084 P1-3)
+          spanId   — 단일 span ID (W3SC 추가 시 활용)
+          userId   — 인증 사용자 ID (api 모듈)
+          orderId  — 주문 ID (consumer 모듈 dispatch)
+          strategyId — 전략 ID (consumer 모듈 신호)
+    -->
+    <appender name="PLAIN_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{HH:mm:ss.SSS} [%X{traceId:--}] [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- 표준 필드명 정합 (Loki·ELK 호환) -->
+            <fieldNames>
+                <timestamp>ts</timestamp>
+                <message>msg</message>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <version>[ignore]</version>
+            </fieldNames>
+            <!-- 정적 컨텍스트 — application·profiles 항상 부착 -->
+            <customFields>{"application":"${springAppName}","profiles":"${springActiveProfiles}"}</customFields>
+            <!-- MDC 5 표준 키 명시 포함 (whitelisting) -->
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>orderId</includeMdcKeyName>
+            <includeMdcKeyName>strategyId</includeMdcKeyName>
+            <!-- KST timezone 강제 (JVM TZ override 회피 안전) -->
+            <timeZone>Asia/Seoul</timeZone>
+        </encoder>
+    </appender>
+
+    <!-- default(no profile) — 회귀 안전 (기존 plain text 유지) -->
+    <root level="INFO">
+        <appender-ref ref="PLAIN_STDOUT"/>
+    </root>
+
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="PLAIN_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="DEBUG"/>
+        <logger name="org.flywaydb" level="INFO"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <springProfile name="prd">
+        <root level="INFO">
+            <appender-ref ref="JSON_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="INFO"/>
+    </springProfile>
+</configuration>

@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar MOCK 알람 폭주 근본원인 분석 - 2026-06-08</title>
+  <style>
+    :root {
+      --bg:#f6f8fb;--panel:#fff;--ink:#172033;--muted:#667085;--line:#d9e1ec;
+      --ok:#15803d;--warn:#b45309;--bad:#b42318;--blue:#0b66c3;
+      --soft-ok:#eaf7ee;--soft-warn:#fff4df;--soft-bad:#fff0ef;--soft-blue:#eaf3ff;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:1100px;margin:0 auto;padding:34px 24px 54px}
+    header{display:grid;gap:12px;padding:26px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#fff,#fff0ef)}
+    h1{font-size:28px;margin:0;line-height:1.25}h2{margin:34px 0 0;font-size:21px}h3{font-size:16px;margin:0}
+    p{margin:8px 0 0}code{padding:1px 5px;border-radius:5px;background:#eef2f7;font-size:13px}
+    .muted{color:var(--muted)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700}
+    .badge.ok{color:var(--ok);background:var(--soft-ok)}.badge.warn{color:var(--warn);background:var(--soft-warn)}
+    .badge.bad{color:var(--bad);background:var(--soft-bad)}.badge.info{color:var(--blue);background:var(--soft-blue)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:14px}
+    th{color:#344054;background:#f8fafc;font-size:13px}tr:last-child td{border-bottom:0}
+    pre{margin:12px 0 0;padding:14px;overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:#0f172a;color:#dbe7ff;font-size:13px;line-height:1.65}
+    .hl-bad{color:#fda4a4;font-weight:700}.hl-ok{color:#86efac;font-weight:700}
+    ul{margin:10px 0 0 20px;padding:0}li{margin:6px 0}
+    footer{margin-top:40px;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><span class="badge bad">INCIDENT 분석 · MOCK</span> <span class="badge info">자본 손실 0 · 코드 미수정(분석)</span></div>
+    <h1>MOCK 자동매매 알람 폭주 — 근본원인 분석</h1>
+    <p class="muted">2026-06-08 · 전략 #8 (paper_learning_ma10_touch_1m_005930) · 슬랙 알람 수천 건 · Codex 분석 교차검증 + 예방 설계</p>
+    <p><b>한 줄 결론</b> — 단일 상류 결함(아침 NO_QUOTE 진입 스킵)이 하류로 줄줄이 증폭됐고, 그 사슬을 끊을 <b>핵심 안전장치(포지션 단일권위·drift 자동보정·이벤트 replay-safe·watcher 쿨다운)가 부재</b>해 폭주가 됐다. 자본 손실은 0(없는 물량을 못 판 것뿐, KIS가 정확히 거부).</p>
+  </header>
+
+  <h2>§1. 인과 사슬 (4단계 증폭)</h2>
+  <div class="card">
+    <pre>[발단] 09:0x~10:14 — 진입 정책(marketable limit)이 호가 미수신 → BUY 전량 <span class="hl-bad">SIGNAL_SKIPPED_NO_QUOTE</span>
+   ↓  005930 포지션 0주 → 이후 SELL 신호는 <span class="hl-bad">SELL_WITHOUT_POSITION</span> 차단 (1차 알람)
+[전환] 10:41 BUY 체결 시작 + MOCK 체결 backfill이 과거 체결 6건 <span class="hl-bad">재발행</span>
+   ↓  AutoExitOrderCoordinator가 재발행=새 체결로 오인 → 익절 SELL 중복(4·6·5·6·7주)·대부분 KIS 거부
+[누적] 내부 장부 어긋남: position(KIS권위) 5주  vs  strategy_position 7주
+   ↓  ConsumerExecutionStrategyPositionAdapter는 drift를 <span class="hl-bad">WARN만</span> 하고 보정 안 함
+[폭주] PositionStopLossTickWatcher가 유령 7주 기준 손절 매도를 <span class="hl-bad">매 tick 발행</span> (쿨다운 없음)
+   ↓  KIS 5주뿐 → 거부, idempotency가 주문은 막지만 intent publish는 계속 → <span class="hl-bad">IDEMPOTENCY_SKIPPED 4,920건/30분</span></pre>
+  </div>
+
+  <h2>§2. 사용자 질문 3개 — 정확한 답 (데이터 실측)</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>질문</th><th>답</th></tr></thead>
+      <tbody>
+        <tr><td><b>매도는 왜 안 됐는데 (신호는) 왔나?</b></td><td>신호는 전략 조건(MA·익절·손절)으로 정상 발생 → 주문은 <b>리스크 가드가 차단</b>. 신호 생성 레이어와 주문 발행 레이어가 분리돼 "신호는 오는데 주문은 거부"가 정상 발생.</td></tr>
+        <tr><td><b>잔고는 왜 없다고 했나?</b></td><td>KIS <code>1:모의투자 잔고내역이 없습니다</code>는 <b>현금 0이 아니라 매도가능 수량 부족</b>. 실측 순자산 ~1,170만원, KIS 보유 5주인데 시스템이 7주 매도 시도 → 거부.</td></tr>
+        <tr><td><b>왜 수량이 꼬였나?</b></td><td>position(KIS권위) <b>5주</b> ↔ strategy_position <b>7주</b> 드리프트. 보정 코드 부재로 전략이 유령 2주를 계속 매도 시도.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§3. Codex 분석 교차검증</h2>
+  <div class="card">
+    <p>Codex 분석은 <b>대체로 정확</b>. 실측 대조:</p>
+    <table>
+      <thead><tr><th>Codex 주장</th><th>실측</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>auto-sl intent 1,356건 폭주</td><td>IDEMPOTENCY_SKIPPED 4,920건/30분 (≈2.7/s)</td><td><span class="badge ok">맞음·더 심함</span></td></tr>
+        <tr><td>strategy_position drift 7 vs 5</td><td>position MOCK=5, strategy_position=7</td><td><span class="badge ok">정확</span></td></tr>
+        <tr><td>"잔고없음"=매도가능 부족(5&lt;7)</td><td>kisHoldingQty=5, requestedQty=7</td><td><span class="badge ok">정확</span></td></tr>
+        <tr><td>backfill 재발행→중복 익절</td><td>익절 SELL 4·6·5·6·7 연속</td><td><span class="badge ok">타당</span></td></tr>
+      </tbody>
+    </table>
+    <p><span class="badge warn">orchestrator 추가</span> Codex가 명시 안 한 1건: <b>오늘 켠 MOCK 체결 backfill(#815)이 §1[전환]의 중복 익절을 활성화/악화</b>시켰을 가능성. backfill이 과거 체결을 재발행하면 AutoExitOrderCoordinator가 중복 익절을 내므로, replay-safe(§4-2)가 없으면 backfill 도입이 이 버그를 깨움. 내가 켠 변경이라 책임지고 명시.</p>
+  </div>
+
+  <h2>§4. ★ 예방 설계 — 사슬을 끊는 안전장치</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>#</th><th>결함</th><th>예방 설계</th><th>심각도</th></tr></thead>
+      <tbody>
+        <tr><td><b>1</b></td><td>strategy_position drift를 WARN만</td><td><b>포지션 단일권위(KIS)</b> — drift 시 strategy_position을 position/KIS에 <b>자동 보정</b>(내림). 로그만 X. <b>뿌리</b> — 이것만 고치면 유령 매도 자체가 안 생김</td><td><span class="badge bad">P1 뿌리</span></td></tr>
+        <tr><td><b>2</b></td><td>backfill 재발행 체결을 새 체결로 오인 → 중복 익절</td><td><b>이벤트 replay-safe</b>: backfill/복구 이벤트에 플래그 또는 executedAt 신선도 체크 → 과거 체결엔 익절 미발행. (#815와 직결)</td><td><span class="badge bad">P1</span></td></tr>
+        <tr><td><b>3</b></td><td>tick watcher가 매 tick 무한 재발행</td><td><b>쿨다운/서킷</b>: auto-sl 발행 후 상태 변화 전까지 재발행 금지. idempotency(주문)에만 의존 X, intent 생성 단계 차단</td><td><span class="badge warn">P2</span></td></tr>
+        <tr><td><b>4</b></td><td>missed 체결통보 → ACK 영구 정체 (주문 144·176)</td><td>MOCK 체결 backfill(#815)로 일부 복구되나, <b>WS 체결통보 신뢰성</b> + 정체 주문 timeout/재조회 강화</td><td><span class="badge warn">P2</span></td></tr>
+        <tr><td><b>5</b></td><td>반복 거부에도 계속 시도·매번 알림</td><td>거부 N회 시 <b>해당 종목 자동 정지 + 1회만 알림</b> (알림 디바운스)</td><td><span class="badge warn">P2</span></td></tr>
+        <tr><td><b>6</b></td><td>NO_QUOTE가 전체 발단</td><td>(이미 opt-in 게이트로 수정 완료) + fail-safe 원칙</td><td><span class="badge ok">완료</span></td></tr>
+        <tr><td><b>7</b></td><td>PAUSED 전략도 position-driven 손절이 발사</td><td>설계 의도(보유 보호)는 맞으나, <b>드리프트·유령 포지션엔 발사 금지</b> 가드 필요 (포지션 권위 확인 후)</td><td><span class="badge warn">P2</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§5. "코드 많이 고쳐서 문제 아니냐" — 정직한 답</h2>
+  <div class="card">
+    <p><b>부분적으로 맞습니다.</b> 오늘 켠 두 변경이 새 실패 모드를 노출:</p>
+    <ul>
+      <li><b>진입 marketable limit</b> → 호가 커버리지 부재로 NO_QUOTE 스킵 (발단) — <span class="badge ok">opt-in 게이트로 이미 수정</span></li>
+      <li><b>MOCK 체결 backfill 동일화(#815)</b> → 과거 체결 재발행이 중복 익절 깨움 (§4-2) — <span class="badge bad">replay-safe 필요</span></li>
+    </ul>
+    <p>다만 <b>근본(§4-1 drift 자동보정 부재)은 원래 있던 구조적 빈틈</b>이고, 오늘 변경이 그걸 건드려 터진 것. 즉 "변경이 방아쇠, 구조 빈틈이 화약".</p>
+  </div>
+
+  <h2>§6. 권장 진행 순서</h2>
+  <div class="card">
+    <ul>
+      <li><b>즉시(완료)</b>: strategy_position #8 7→5 수동 보정 (KIS 권위 일치) → 매도 거부 0 멈춤</li>
+      <li><b>개선 1순위</b>: §4-1 포지션 단일권위 + drift 자동보정 (ADR로 설계 먼저 — 또 사슬 만들지 않게)</li>
+      <li><b>개선 2순위</b>: §4-2 replay-safe 이벤트 + §4-3 watcher 쿨다운 + §4-5 알림 디바운스</li>
+      <li><b>canary 전</b>: ACTIVE 전략 1개로 정리 + 깨끗한 포지션에서 시작</li>
+    </ul>
+  </div>
+
+  <footer>
+    evidence: order_request·strategy_position·position·system_event 실측 + consumer 로그(IDEMPOTENCY_SKIPPED·NO_QUOTE·reconcile drift) · Codex 분석 교차검증 · 코드 미수정(분석 전용) · 작성: orchestrator
+  </footer>
+</main>
+</body>
+</html>

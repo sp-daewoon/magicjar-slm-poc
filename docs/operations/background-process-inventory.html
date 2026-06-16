@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 백그라운드 프로세스 인벤토리 - 2026-06-09</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+      --violet: #5b21b6;
+      --soft-violet: #f1edff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1280px; margin: 0 auto; padding: 34px 24px 60px; }
+    header {
+      display: grid;
+      gap: 13px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+    }
+    h1, h2, h3, h4 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    h4 { font-size: 15px; margin-top: 14px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; font-size: 13px; }
+    a { color: var(--blue); text-decoration: none; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    .badge.violet { color: var(--violet); background: var(--soft-violet); }
+    .metric strong { display: block; font-size: 34px; line-height: 1; margin-top: 7px; }
+    .toc {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .toc a {
+      display: inline-flex;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(128px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .mini-flow {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+      margin-top: 12px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .step, .node {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      min-width: 126px;
+      padding: 10px;
+    }
+    .step { min-height: 106px; }
+    .node { min-height: 74px; }
+    .step:not(:last-child)::after,
+    .node:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -11px;
+      top: 38%;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .step b, .node b { display: block; margin-bottom: 4px; }
+    .step small, .node small { color: var(--muted); }
+    .item {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 14px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .035);
+    }
+    .item-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .kv {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fbfcfe;
+      padding: 10px;
+      min-height: 70px;
+    }
+    .kv b { display: block; margin-bottom: 4px; font-size: 13px; }
+    .callout {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+    .callout.ok { background: var(--soft-ok); border-color: #b7e2c1; }
+    .callout.warn { background: var(--soft-warn); border-color: #f1d19b; }
+    .callout.bad { background: var(--soft-bad); border-color: #f3b8b1; }
+    .source { color: var(--muted); font-size: 13px; margin-top: 8px; }
+    .section-note { margin-top: 12px; color: var(--muted); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    @media (max-width: 980px) {
+      .span-3, .span-4, .span-6, .span-8 { grid-column: span 12; }
+      .cols { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: repeat(6, 170px); }
+      .item-head { display: block; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge info">OPERATIONS · background-process-inventory</span>
+      <span class="badge warn">코드 기준 전수 스캔</span>
+      <span class="badge violet">2026-06-09</span>
+    </div>
+    <h1>magicJar 백그라운드 프로세스 인벤토리</h1>
+    <p class="muted">조사 기준: <code>@Scheduled</code>, <code>@KafkaListener</code>, <code>ApplicationRunner</code>, <code>@PostConstruct</code>, <code>@EventListener</code>, 내부 <code>Executor</code>/<code>Scheduler</code> 사용처를 코드에서 직접 추적. 런타임 설정값에 따라 일부는 skip 또는 no-op 될 수 있다.</p>
+    <p><b>핵심 결론</b> - 이 시스템은 화면에서 보이지 않는 백그라운드 작업이 크게 5종류다. 시장 데이터 수집/봉 생성, 시그널/리스크/주문, 체결/포지션 보정, 알림/UI fanout, 그리고 배치 기준정보 동기화가 서로 Kafka와 Redis를 통해 연결된다. 특히 <b>포지션이 있는데 전략 보유 현황이 비는 문제</b>는 체결 이벤트가 어떤 <code>order_request.strategy_id</code>와 매칭되어 <code>strategy_position</code>까지 replay 되었는지 확인해야 한다.</p>
+    <div class="toc">
+      <a href="#maps">전체 흐름도</a>
+      <a href="#risk-points">운영 포인트</a>
+      <a href="#api">API 백그라운드</a>
+      <a href="#consumer-market">Consumer 시장 데이터</a>
+      <a href="#consumer-order">Consumer 주문/포지션</a>
+      <a href="#consumer-ops">Consumer 운영/알림</a>
+      <a href="#batch">Batch</a>
+      <a href="#checklist">점검 체크리스트</a>
+    </div>
+  </header>
+
+  <h2>요약 숫자</h2>
+  <div class="grid">
+    <div class="card span-3 metric">
+      <span class="badge info">스케줄</span>
+      <strong>30+</strong>
+      <p class="muted">cron/fixedRate/fixedDelay. 같은 컴포넌트의 다중 cron은 운영 단위로 묶었다.</p>
+    </div>
+    <div class="card span-3 metric">
+      <span class="badge violet">Kafka</span>
+      <strong>40+</strong>
+      <p class="muted">리스너 메서드 기준. UI fanout과 자본 경로 리스너가 섞여 있다.</p>
+    </div>
+    <div class="card span-3 metric">
+      <span class="badge warn">부팅/훅</span>
+      <strong>10+</strong>
+      <p class="muted">부팅 직후 KIS/DB/Redis를 건드리는 작업이 많다.</p>
+    </div>
+    <div class="card span-3 metric">
+      <span class="badge bad">주의</span>
+      <strong>7</strong>
+      <p class="muted">포지션 정합, WS reconnect, backfill, 일봉 MIGRATE wipe, DLT, KillSwitch, 알림 outbox.</p>
+    </div>
+  </div>
+
+  <h2 id="maps">전체 흐름도</h2>
+  <div class="card">
+    <h3>1. 시장 데이터 → 봉 → 시그널 → 주문</h3>
+    <div class="flow">
+      <div class="step"><b>KIS WebSocket</b><small>H0UNCNT0/H0STOUP0 tick, H0UNASP0 orderbook</small></div>
+      <div class="step"><b>Redis/Kafka</b><small>quote:last, candle:current, market.tick.v1, market.orderbook.v1</small></div>
+      <div class="step"><b>1m 마감</b><small>TickToMinuteAggregator가 minute closed publish</small></div>
+      <div class="step"><b>경계봉</b><small>BoundaryAggregator/BoundaryClosingKafkaListener</small></div>
+      <div class="step"><b>시그널/리스크</b><small>RealtimeSignalGenerator → signal.generated.v1 → risk</small></div>
+      <div class="step"><b>주문</b><small>order.intent.v1 → OrderRouter → KIS REST</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>2. 주문 → 체결 → 포지션/전략 보유 현황</h3>
+    <div class="flow">
+      <div class="step"><b>OrderIntent</b><small>signal 또는 수동/자동 청산에서 발행</small></div>
+      <div class="step"><b>OrderRequest</b><small>REQUESTED/ACK/FILLED 상태 저장</small></div>
+      <div class="step"><b>KIS 체결 통보</b><small>WS H0STCNI0/9 또는 REST backfill</small></div>
+      <div class="step"><b>Execution 저장</b><small>ExecutionPersistenceService가 position 적용</small></div>
+      <div class="step"><b>strategy_position</b><small>strategyId 있는 주문은 전략 보유 현황 반영</small></div>
+      <div class="step"><b>후속 작업</b><small>order.filled.v1 → TP 선주문, holding watch, 알림</small></div>
+    </div>
+    <div class="callout bad">
+      <b>포지션은 있는데 전략 보유 현황이 비는 대표 원인</b>
+      KIS 외부 주문, WS_PREINSERT/REST_BACKFILL_PREINSERT 같은 sentinel 주문, 또는 ACK merge/backfill 시 <code>strategyId=0</code>이거나 canonical <code>order_request</code>와 체결이 늦게 연결되면 <code>position</code>은 생기지만 <code>strategy_position</code>이 비어 보일 수 있다. 그래서 체결 복구 경로에는 <code>StrategyPositionExecutionReplayService</code>가 붙어 있어야 한다.
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>3. 데이터 품질/백필</h3>
+    <div class="flow">
+      <div class="step"><b>부팅 점검</b><small>CandleBootstrapRunner, LastCandleAtBootstrapRunner</small></div>
+      <div class="step"><b>stale/gap 감지</b><small>last candle, gap detector, detail enter</small></div>
+      <div class="step"><b>KIS REST 보충</b><small>ColdStartExecutor, CandleBackfillWorker, SymbolDetailMinuteGapFill</small></div>
+      <div class="step"><b>합산봉 재생성</b><small>AggregateBackfillRunner</small></div>
+      <div class="step"><b>상태 기록</b><small>reconciliation state, audit trail</small></div>
+      <div class="step"><b>화면 반영</b><small>STOMP, Redis cache, DB query</small></div>
+    </div>
+    <div class="callout ok">
+      <b>2026-06-09 반영 · 일봉 채널 J 단일화 (ADR 0118 amend / PR #844)</b>
+      일봉/주봉/월/년봉 REST 조회 채널을 <code>UN(통합)</code> 우선에서 <code>J(KRX 본시장)</code> 단일로 정정했다. KIS 측 <code>UN</code> 일봉이 일부 종목(예: 036930·047040·098460)에서 2026-02-11에 동결돼 있었고, fallback이 "UN 0건"일 때만 작동해 stale 데이터를 채택하던 결함을 닫았다. 실시간 1m은 정상인데 일봉만 멈추던 현상의 근본 원인. 검증: 036930 일봉 2/11 → 6/8 복구(inserted=75). 영향 컴포넌트 = 아래 <b>MKT-10</b>(ColdStart/Backfill), <b>MKT-13</b>(전종목 일봉 캠페인).
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>4. 운영/알림</h3>
+    <div class="flow">
+      <div class="step"><b>이벤트 발생</b><small>order/risk/reconcile/system/DDL</small></div>
+      <div class="step"><b>Kafka fanout</b><small>notification dispatcher와 API STOMP가 독립 그룹으로 소비</small></div>
+      <div class="step"><b>outbox 저장</b><small>NotificationOutbox, OrderEventOutbox</small></div>
+      <div class="step"><b>즉시/지연 발송</b><small>P0 즉시 Slack, P1/P2 retry worker</small></div>
+      <div class="step"><b>DLT 감시</b><small>order.*.DLT 수신 시 P0</small></div>
+      <div class="step"><b>화면 업데이트</b><small>STOMP topic별 갱신</small></div>
+    </div>
+  </div>
+
+  <h2 id="risk-points">운영자가 알아야 할 포인트</h2>
+  <div class="grid">
+    <div class="card span-6">
+      <h3>포지션/전략 보유 현황</h3>
+      <p>권위 흐름은 <code>KIS 체결 → order_execution → position → strategy_position</code>이다. 전략 보유 현황은 주문의 <code>strategyId</code>가 살아 있어야 한다. 외부 주문이나 preinsert/backfill sentinel은 전략 보유로 자동 귀속되지 않을 수 있다.</p>
+    </div>
+    <div class="card span-6">
+      <h3>화면과 실제 프로세스 분리</h3>
+      <p>STOMP/API는 대부분 화면 업데이트용이다. 실제 주문/체결/손절/백필은 consumer와 batch가 수행한다. 화면에 안 보여도 Kafka 리스너와 scheduler는 계속 동작한다.</p>
+    </div>
+    <div class="card span-6">
+      <h3>재연결은 단순 reconnect가 아니다</h3>
+      <p>KIS WS 연결 성공 시 기존 종목 재구독, 체결통보 구독, <code>onReconnect</code> hook, REST 체결 backfill이 같이 움직인다. 재연결 로그가 많으면 KIS 호출도 늘어날 수 있다.</p>
+    </div>
+    <div class="card span-6">
+      <h3>outbox는 조용히 쌓일 수 있다</h3>
+      <p>Kafka/Slack 실패는 즉시 사용자 화면에 안 보일 수 있고, <code>order_event_outbox</code>, <code>notification_outbox</code>에 남아 retry worker가 뒤에서 처리한다.</p>
+    </div>
+  </div>
+
+  <h2 id="api">API 백그라운드</h2>
+  <p class="section-note">API 모듈은 외부 수집 일부와 Kafka→STOMP fanout이 중심이다. 자본 상태를 직접 바꾸기보다는 화면 표시와 뉴스/공시 수집을 담당한다.</p>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-01. WatchlistNewsScheduler</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">매 60초</span><span class="badge ok">Naver rate limit</span></div>
+      </div>
+      <code>api/.../scheduler/WatchlistNewsScheduler.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>watchlist 조회</b><small>distinct code</small></div>
+      <div class="node"><b>종목명 조회</b><small>query 구성</small></div>
+      <div class="node"><b>rate slot</b><small>분당 17건</small></div>
+      <div class="node"><b>Naver 호출</b><small>3.5초 stagger</small></div>
+      <div class="node"><b>DB 저장</b><small>news_article</small></div>
+      <div class="node"><b>Kafka</b><small>news.collected.v1</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-02. DartDisclosurePollingScheduler</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">매 1분 KST</span><span class="badge ok">OPENDART</span></div>
+      </div>
+      <code>api/.../scheduler/DartDisclosurePollingScheduler.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>API key 확인</b><small>없으면 skip</small></div>
+      <div class="node"><b>DART list</b><small>당일 page 100</small></div>
+      <div class="node"><b>중복 검사</b><small>rcept_no UQ</small></div>
+      <div class="node"><b>DB 저장</b><small>disclosure</small></div>
+      <div class="node"><b>Kafka</b><small>disclosure event</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-03. LiveDailyCandleScheduler</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">5분 주기</span><span class="badge ok">08:00~20:00 KST</span></div>
+      </div>
+      <code>api/.../service/LiveDailyCandleScheduler.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>시간 게이트</b><small>08~20시</small></div>
+      <div class="node"><b>첫 사용자</b><small>user_account</small></div>
+      <div class="node"><b>watchlist</b><small>distinct code</small></div>
+      <div class="node"><b>1d refresh</b><small>incremental</small></div>
+      <div class="node"><b>KIS 호출 완화</b><small>종목 사이 200ms</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-04. market tick/orderbook STOMP forwarder</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">Scheduled cleanup</span><span class="badge warn">5분 stale cleanup</span></div>
+      </div>
+      <code>api/.../messaging/MarketTickStompForwarder.kt</code> · <code>MarketOrderbookStompForwarder.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>Kafka 수신</b><small>market.tick/orderbook</small></div>
+      <div class="node"><b>throttle</b><small>tick 1s, orderbook 200ms</small></div>
+      <div class="node"><b>STOMP</b><small>/topic/market.*.{code}</small></div>
+      <div class="node"><b>상태 map</b><small>최근 발행 시각</small></div>
+      <div class="node"><b>cleanup</b><small>1시간 stale 제거</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-05. candle STOMP forwarder 묶음</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">1m + 3m~12h</span></div>
+      </div>
+      <code>api/.../messaging/MarketCandleStompForwarder.kt</code> · <code>CandleClosedStompListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>closed topic</b><small>1m/3m/5m/15m/30m/90m/1h/4h/12h</small></div>
+      <div class="node"><b>payload parse</b><small>code, interval, ts</small></div>
+      <div class="node"><b>STOMP</b><small>/topic/market.candle...</small></div>
+      <div class="node"><b>차트 append</b><small>frontend 구독자</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-06. 주문/시그널/리스크/계좌/reconcile STOMP fanout</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">UI 실시간</span><span class="badge ok">stomp_event 저장</span></div>
+      </div>
+      <code>api/.../messaging/Stomp*.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>Kafka 이벤트</b><small>order, signal, risk, account, recon</small></div>
+      <div class="node"><b>payload 변환</b><small>화면 DTO</small></div>
+      <div class="node"><b>best-effort 저장</b><small>stomp_event</small></div>
+      <div class="node"><b>STOMP 발행</b><small>user별 topic</small></div>
+      <div class="node"><b>화면 갱신</b><small>cache invalidate/append</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>API-07. SystemEvent/Ai/Journal fanout</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">운영 UI</span></div>
+      </div>
+      <code>SystemEventStompNotifier.kt</code> · <code>AiCommentResponse*.kt</code> · <code>JournalEventConsumer.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>Kafka 수신</b><small>system.event, ai.response, order.filled</small></div>
+      <div class="node"><b>감사/저널</b><small>audit or journal side effect</small></div>
+      <div class="node"><b>STOMP</b><small>운영/AI/저널 화면</small></div>
+    </div>
+  </div>
+
+  <h2 id="consumer-market">Consumer 시장 데이터/캔들</h2>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-01. WatchlistIngestionWorker</h3>
+        <div class="meta"><span class="badge info">PostConstruct</span><span class="badge info">Scheduled</span><span class="badge warn">1분 세션 감지</span><span class="badge bad">KIS WS 진입점</span></div>
+      </div>
+      <code>consumer/.../ingestion/WatchlistIngestionWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅</b><small>watchlist 전체 조회</small></div>
+      <div class="node"><b>REAL 키 확인</b><small>없으면 connect skip</small></div>
+      <div class="node"><b>recompute</b><small>구독 set 먼저 등록</small></div>
+      <div class="node"><b>KIS WS connect</b><small>onConnected 재구독</small></div>
+      <div class="node"><b>세션 감지</b><small>Regular이면 polling start</small></div>
+      <div class="node"><b>종료</b><small>unsubscribe + polling stop</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-02. KisWebSocketBridge</h3>
+        <div class="meta"><span class="badge info">Executor scheduler</span><span class="badge bad">heartbeat/reconnect</span><span class="badge violet">Kafka publish</span></div>
+      </div>
+      <code>consumer/.../ws/KisWebSocketBridge.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>connect</b><small>approval_key 확인</small></div>
+      <div class="node"><b>subscribe</b><small>가격/NXT/호가/체결통보</small></div>
+      <div class="node"><b>message parse</b><small>tick/orderbook/execution</small></div>
+      <div class="node"><b>Redis/Kafka</b><small>quote, candle, market.*.v1</small></div>
+      <div class="node"><b>watchdog</b><small>30/60초 무신호</small></div>
+      <div class="node"><b>reconnect</b><small>backoff + onReconnect hook</small></div>
+    </div>
+    <div class="callout warn">재연결 성공 시 <code>KisExecutionBackfillService</code>가 붙으면 KIS 당일 체결 REST 조회도 함께 돈다. WS 장애 로그는 단순 네트워크 로그가 아니라 체결 보정 트리거로 봐야 한다.</div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-03. WatchlistPollingWorker</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">5초</span><span class="badge ok">WS slot fallback</span></div>
+      </div>
+      <code>consumer/.../ingestion/WatchlistPollingWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>pool</b><small>WS에서 밀린 종목</small></div>
+      <div class="node"><b>5초 tick</b><small>running이면 진행</small></div>
+      <div class="node"><b>KIS REST</b><small>현재는 1d candle 1건</small></div>
+      <div class="node"><b>Redis quote</b><small>source=polling</small></div>
+      <div class="node"><b>DB candle</b><small>saveAll idempotent</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-04. RealtimeSubscriptionRouter</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">60초 TTL 정리</span><span class="badge ok">DETAIL/STRATEGY/HOLDING/PENDING_BUY</span></div>
+      </div>
+      <code>consumer/.../ingestion/RealtimeSubscriptionRouter.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>수요 등록</b><small>owner/priority/TTL</small></div>
+      <div class="node"><b>WS connect</b><small>필요 시 연결</small></div>
+      <div class="node"><b>slot 경합</b><small>priority 기반 evict</small></div>
+      <div class="node"><b>today seed</b><small>단일 executor 비동기</small></div>
+      <div class="node"><b>TTL cleanup</b><small>만료 release</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-05. OrderbookSubscriptionRouter</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">60초 idle 정리</span><span class="badge ok">LRU</span></div>
+      </div>
+      <code>consumer/.../ingestion/OrderbookSubscriptionRouter.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>상세 진입</b><small>symbol.detail ENTER</small></div>
+      <div class="node"><b>debounce</b><small>200ms</small></div>
+      <div class="node"><b>LRU slot</b><small>최대 10</small></div>
+      <div class="node"><b>KIS 호가</b><small>H0UNASP0</small></div>
+      <div class="node"><b>idle cleanup</b><small>5분 미접근 unsub</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-06. WatchlistChanged / RealtimeDemand / SymbolDetail listener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">사용자 행동 후속 처리</span></div>
+      </div>
+      <code>consumer/.../kafka/*.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>watchlist 변경</b><small>ADDED/REMOVED</small></div>
+      <div class="node"><b>cold-start</b><small>캔들 없으면 submit</small></div>
+      <div class="node"><b>구독 라우팅</b><small>WS/polling 분배</small></div>
+      <div class="node"><b>상세 진입</b><small>DETAIL + 호가 + 1m gapfill</small></div>
+      <div class="node"><b>전략 후보</b><small>STRATEGY 수요 TTL</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-07. TickToMinuteAggregator</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">매분 0초</span><span class="badge violet">Kafka</span></div>
+      </div>
+      <code>consumer/.../market/TickToMinuteAggregator.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>구독 종목</b><small>KIS WS subscribedCodes</small></div>
+      <div class="node"><b>Redis snapshot</b><small>candle:current:1m</small></div>
+      <div class="node"><b>DB upsert</b><small>1m candle</small></div>
+      <div class="node"><b>Kafka</b><small>market.candle.minute.closed.v1</small></div>
+      <div class="node"><b>Boundary</b><small>상위 interval 계산</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-08. DailyCloseFinalizer</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">20:10 KST</span></div>
+      </div>
+      <code>consumer/.../application/market/DailyCloseFinalizer.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>영업일 확인</b><small>KST</small></div>
+      <div class="node"><b>Redis 1d</b><small>candle:today:*:1d</small></div>
+      <div class="node"><b>DB 확정</b><small>1d candle insert</small></div>
+      <div class="node"><b>합산 재생성</b><small>watchlist 1m 기반</small></div>
+      <div class="node"><b>closed publish</b><small>4h/12h 등 후속</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-09. OvertimeSinglePriceSubscriber</h3>
+        <div class="meta"><span class="badge info">PostConstruct</span><span class="badge info">Scheduled</span><span class="badge warn">16:00/18:00 KST</span></div>
+      </div>
+      <code>consumer/.../ingestion/OvertimeSinglePriceSubscriber.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅 catch-up</b><small>16~18시이면 실행</small></div>
+      <div class="node"><b>16:00</b><small>watchlist top 20</small></div>
+      <div class="node"><b>H0STOUP0</b><small>시간외 단일가 subscribe</small></div>
+      <div class="node"><b>18:00</b><small>전체 unsubscribe</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-10. ColdStartExecutor / CandleBackfillWorker / SymbolDetailMinuteGapFill</h3>
+        <div class="meta"><span class="badge info">Executor</span><span class="badge warn">비동기</span><span class="badge ok">KIS REST 보충</span></div>
+      </div>
+      <code>ColdStartExecutor.kt</code> · <code>CandleBackfillWorker.kt</code> · <code>SymbolDetailMinuteGapFillService.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>submit</b><small>watchlist/부팅/상세/monitor</small></div>
+      <div class="node"><b>dedupe/throttle</b><small>in-flight, rate gate</small></div>
+      <div class="node"><b>KIS fetch</b><small>1m/1d/1wk/1mo/1y</small></div>
+      <div class="node"><b>DB 저장</b><small>candle saveAll</small></div>
+      <div class="node"><b>합산봉</b><small>AggregateBackfillRunner</small></div>
+      <div class="node"><b>상태/audit</b><small>ready/failed</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-11. LastCandleAtMonitor / BootstrapRunner</h3>
+        <div class="meta"><span class="badge info">ApplicationRunner</span><span class="badge info">Scheduled</span><span class="badge warn">18:00 KST</span></div>
+      </div>
+      <code>consumer/.../monitoring/LastCandleAtMonitor.kt</code> · <code>LastCandleAtBootstrapRunner.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅 1회</b><small>toggle 가능</small></div>
+      <div class="node"><b>18:00 점검</b><small>watchlist last candle</small></div>
+      <div class="node"><b>stale 감지</b><small>1d/1m SLA</small></div>
+      <div class="node"><b>복구 큐잉</b><small>cold-start/backfill</small></div>
+      <div class="node"><b>알림/audit</b><small>Slack, audit row</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-12. TickFallbackEmitter</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">10초</span><span class="badge bad">현재 placeholder</span></div>
+      </div>
+      <code>consumer/.../application/market/TickFallbackEmitter.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>10초 tick</b><small>market closed면 skip</small></div>
+      <div class="node"><b>TODO</b><small>구독 종목 순회 예정</small></div>
+      <div class="node"><b>현재 효과</b><small>실질 데이터 발행 없음</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>MKT-13. MarketDailyBackfillCampaign (전종목 일봉 universe + 마이그레이션)</h3>
+        <div class="meta"><span class="badge info">Admin REST</span><span class="badge warn">동기 ~1.5~2h/run</span><span class="badge violet">코루틴 Semaphore</span><span class="badge bad">MIGRATE 모드 = wipe</span></div>
+      </div>
+      <code>consumer/.../aggregation/MarketDailyBackfillCampaign.kt</code> · <code>MarketDailyWipeService.kt</code> · <code>MarketDailyBackfillAdminController.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>트리거</b><small>POST /admin/market-daily-backfill/run</small></div>
+      <div class="node"><b>universe</b><small>보통주 ~2,517 (MARKET_DAILY)</small></div>
+      <div class="node"><b>동시성</b><small>Semaphore(10) + 0.1s 딜레이</small></div>
+      <div class="node"><b>KIS 일봉 J</b><small>10년·멱등 ON CONFLICT</small></div>
+      <div class="node"><b>콜 cap</b><small>1회 6000콜, 초과분 이연</small></div>
+      <div class="node"><b>cooldown</b><small>no-advance 7일 (KIS 부재 방어)</small></div>
+    </div>
+    <div class="callout warn">
+      <b>NORMAL vs MIGRATE 모드</b>
+      파라미터 없는 기본 <code>run</code>은 <b>NORMAL</b> — 멱등 재개, wipe 0. <code>?mode=MIGRATE</code>는 먼저 일봉 패밀리(<code>1d·1wk·1mo·1y</code>)를 전 source 삭제 후 J 채널로 전체 재적재한다. <b>1m·5m는 화이트리스트 LOCK으로 절대 삭제 안 됨</b>(실시간 누적분은 KIS REST 복구 불가 → 영구 손실 방지, 부팅 단언 가드). 동기 실행이라 curl이 수 시간 hang하는 것은 정상이며, 멀티런으로 며칠 분산한다. 모니터: <code>SELECT count(*) ... WHERE source='KIS-MKT-DAILY-BF'</code> 또는 progress 엔드포인트.
+    </div>
+    <p class="source">물리 분리: 전종목 1d(MARKET_DAILY)와 managed universe 1m(watchlist/보유/전략/상세)은 별개 — 전종목 1m 폭발 없음. 게이트 ENV <code>MAGICJAR_MARKET_DAILY_BACKFILL_ENABLED</code>.</p>
+  </div>
+
+  <h2 id="consumer-order">Consumer 주문/포지션/시그널</h2>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-01. BoundaryClosingKafkaListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">9개 candle closed topic</span></div>
+      </div>
+      <code>consumer/.../signal/BoundaryClosingKafkaListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>closed 수신</b><small>1m~12h</small></div>
+      <div class="node"><b>Candle 변환</b><small>code/ts/OHLCV</small></div>
+      <div class="node"><b>SignalGenerator</b><small>onBoundaryClosed</small></div>
+      <div class="node"><b>전략 평가</b><small>BUY/SELL/HOLD</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-02. SignalGeneratedKafkaListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge bad">리스크 게이트</span><span class="badge warn">manual ack</span></div>
+      </div>
+      <code>consumer/.../risk/SignalGeneratedKafkaListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>signal 수신</b><small>HOLD skip</small></div>
+      <div class="node"><b>KIS sync</b><small>체결 원장 확인</small></div>
+      <div class="node"><b>RiskContext</b><small>capital/position/config</small></div>
+      <div class="node"><b>Allowed</b><small>order.intent.v1</small></div>
+      <div class="node"><b>Blocked</b><small>risk_event + risk.violation</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-03. OrderRouterKafkaListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge bad">자본 경로</span><span class="badge warn">manual immediate ack</span></div>
+      </div>
+      <code>consumer/.../order/OrderRouterKafkaListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>intent parse</b><small>source AUTO/MANUAL</small></div>
+      <div class="node"><b>idempotency</b><small>Redis SETNX</small></div>
+      <div class="node"><b>게이트</b><small>mode, killSwitch, market-hours, KIS sync</small></div>
+      <div class="node"><b>REQUESTED</b><small>order_request insert</small></div>
+      <div class="node"><b>KIS submit</b><small>REST + retry</small></div>
+      <div class="node"><b>ACK/REJECT</b><small>DB update + Kafka</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-04. KisExecutionWsListener</h3>
+        <div class="meta"><span class="badge info">WS callback</span><span class="badge bad">체결 권위</span><span class="badge violet">Kafka publish</span></div>
+      </div>
+      <code>consumer/.../order/KisExecutionWsListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>H0STCNI</b><small>체결/접수/거부/취소</small></div>
+      <div class="node"><b>order 매칭</b><small>findByKisOrderNo + retry</small></div>
+      <div class="node"><b>preinsert</b><small>없는 주문은 sentinel</small></div>
+      <div class="node"><b>execution 저장</b><small>eventId dedup</small></div>
+      <div class="node"><b>상태 전이</b><small>PARTIAL/FILLED/CANCELLED</small></div>
+      <div class="node"><b>Kafka</b><small>order.filled/rejected/cancelled, balance</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-05. KisExecutionBackfillService</h3>
+        <div class="meta"><span class="badge info">ApplicationReadyEvent</span><span class="badge info">onReconnect hook</span><span class="badge warn">throttle 60초</span></div>
+      </div>
+      <code>consumer/.../order/KisExecutionBackfillService.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅 완료</b><small>hook register</small></div>
+      <div class="node"><b>첫 실행/재연결</b><small>runBackfillSafely</small></div>
+      <div class="node"><b>사용자 순회</b><small>credential accountType</small></div>
+      <div class="node"><b>KIS 일별체결</b><small>fetchTodayExecutions</small></div>
+      <div class="node"><b>delta 저장</b><small>execution + position</small></div>
+      <div class="node"><b>replay</b><small>strategy_position 누락 보정</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-06. HoldingPositionIndex / HoldingDemandRegistrar</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge info">PostConstruct</span><span class="badge warn">60초 refresh</span></div>
+      </div>
+      <code>HoldingPositionIndex.kt</code> · <code>HoldingDemandRegistrar.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>DB 보유 조회</b><small>strategy_position</small></div>
+      <div class="node"><b>인메모리 index</b><small>code → lots</small></div>
+      <div class="node"><b>HOLDING demand</b><small>evict 금지 구독</small></div>
+      <div class="node"><b>체결 즉시 refresh</b><small>onFillRefresh</small></div>
+      <div class="node"><b>전량 청산</b><small>release</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-07. PositionStopLossTickWatcher</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge bad">tick 손절 안전망</span></div>
+      </div>
+      <code>consumer/.../order/PositionStopLossTickWatcher.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>market.tick</b><small>stale/price check</small></div>
+      <div class="node"><b>index hit</b><small>DB 조회 0</small></div>
+      <div class="node"><b>손절가 계산</b><small>KrxTickSize floor</small></div>
+      <div class="node"><b>실보유 확인</b><small>position authority</small></div>
+      <div class="node"><b>resting SELL 취소</b><small>fail-closed</small></div>
+      <div class="node"><b>MARKET SELL</b><small>order.intent.v1</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-08. AutoExitOrderCoordinator</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge warn">order.filled 후속</span></div>
+      </div>
+      <code>consumer/.../order/AutoExitOrderCoordinator.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>order.filled</b><small>AUTO만 처리</small></div>
+      <div class="node"><b>BUY</b><small>pending release + holding 등록</small></div>
+      <div class="node"><b>replay 가드</b><small>REST_BACKFILL/stale skip</small></div>
+      <div class="node"><b>TP 계산</b><small>평단/수량 기준</small></div>
+      <div class="node"><b>기존 TP 취소</b><small>scale-in 정합</small></div>
+      <div class="node"><b>LIMIT SELL</b><small>auto-tp intent</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-09. EntryTimeoutCancelWorker</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">5초</span><span class="badge ok">미체결 진입 취소</span></div>
+      </div>
+      <code>consumer/.../order/EntryTimeoutCancelWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>후보 조회</b><small>BUY LIMIT open</small></div>
+      <div class="node"><b>ACK 가드</b><small>ODNO/FWDG 필요</small></div>
+      <div class="node"><b>KIS cancel</b><small>시장가 전환 없음</small></div>
+      <div class="node"><b>DB 전이</b><small>CANCELLED or 유지</small></div>
+      <div class="node"><b>audit</b><small>KIS_CANCEL_ACK/REJECT</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-10. OrderReconciliationWorker / StuckAckExecutionResyncWorker</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">60초/120초</span><span class="badge bad">주문 정체 복구</span></div>
+      </div>
+      <code>OrderReconciliationWorker.kt</code> · <code>StuckAckExecutionResyncWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>PENDING_RECONCILE</b><small>5분 grace</small></div>
+      <div class="node"><b>KIS 조회</b><small>inquire daily ccld</small></div>
+      <div class="node"><b>상태 확정</b><small>ACK/FILLED/REJECTED/EXPIRED</small></div>
+      <div class="node"><b>ACK 정체</b><small>180초 이상</small></div>
+      <div class="node"><b>체결 sync</b><small>user/mode 단위</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-11. OrderOutboxPublisherWorker</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">5초</span><span class="badge bad">KillSwitch 가능</span></div>
+      </div>
+      <code>consumer/.../order/OrderOutboxPublisherWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>PENDING outbox</b><small>limit 100</small></div>
+      <div class="node"><b>Kafka send</b><small>5초 timeout</small></div>
+      <div class="node"><b>성공</b><small>markPublished</small></div>
+      <div class="node"><b>실패</b><small>attempt++</small></div>
+      <div class="node"><b>소진</b><small>P0 알림 + KillSwitch</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>ORD-12. BalanceReconcileJob / ManualReconcileKafkaListener / KillSwitchAutoToggler</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge violet">Kafka</span><span class="badge bad">drift → KillSwitch</span></div>
+      </div>
+      <code>consumer/.../reconcile/*.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>5분 cron</b><small>09~15시 평일</small></div>
+      <div class="node"><b>manual trigger</b><small>reconcile.manual.trigger</small></div>
+      <div class="node"><b>분산락</b><small>reconcile:lock</small></div>
+      <div class="node"><b>KIS vs 내부</b><small>잔고 drift 계산</small></div>
+      <div class="node"><b>drift topic</b><small>reconcile.drift.v1</small></div>
+      <div class="node"><b>KillSwitch</b><small>grace + N-strike</small></div>
+    </div>
+  </div>
+
+  <h2 id="consumer-ops">Consumer 운영/알림/부팅</h2>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-01. PositionBootstrapRunner</h3>
+        <div class="meta"><span class="badge info">ApplicationRunner</span><span class="badge bad">KIS 잔고 워밍</span></div>
+      </div>
+      <code>consumer/.../bootstrap/PositionBootstrapRunner.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅</b><small>REAL 3중 게이트</small></div>
+      <div class="node"><b>credential</b><small>REAL 사용자 순회</small></div>
+      <div class="node"><b>KIS balance</b><small>retry 3회</small></div>
+      <div class="node"><b>position upsert</b><small>DB 권위 갱신</small></div>
+      <div class="node"><b>Redis cache</b><small>position:current</small></div>
+      <div class="node"><b>실패</b><small>user별 KillSwitch</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-02. CandleBootstrapRunner / RedisCandleTodayResetRunner</h3>
+        <div class="meta"><span class="badge info">ApplicationRunner</span><span class="badge warn">부팅 직후</span></div>
+      </div>
+      <code>CandleBootstrapRunner.kt</code> · <code>RedisCandleTodayResetRunner.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>Redis reset</b><small>today 1d stale 삭제</small></div>
+      <div class="node"><b>managed universe</b><small>부족/stale 탐지</small></div>
+      <div class="node"><b>cold-start</b><small>비동기 submit</small></div>
+      <div class="node"><b>aggregate only</b><small>1m 충분하면 합산만</small></div>
+      <div class="node"><b>rate margin</b><small>종목 사이 100ms</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-03. SystemKisKeyChangedListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge warn">키 변경 후속</span></div>
+      </div>
+      <code>consumer/.../messaging/listener/SystemKisKeyChangedListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>키 변경 이벤트</b><small>system.kis-key-changed</small></div>
+      <div class="node"><b>Redis lock 확인</b><small>idempotent</small></div>
+      <div class="node"><b>token 삭제</b><small>kis:token/approval</small></div>
+      <div class="node"><b>REAL이면</b><small>WS graceful reconnect</small></div>
+      <div class="node"><b>ack</b><small>실패 시 재처리</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-04. NotificationDispatcher / SystemEventNotificationDispatcher</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge warn">Slack outbox</span></div>
+      </div>
+      <code>consumer/.../notification/*.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>이벤트 수신</b><small>order/risk/recon/system</small></div>
+      <div class="node"><b>rate limit</b><small>P2/WARN dedupe</small></div>
+      <div class="node"><b>outbox insert</b><small>NotificationOutbox</small></div>
+      <div class="node"><b>P0 즉시</b><small>Slack 시도</small></div>
+      <div class="node"><b>실패</b><small>PENDING 유지</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-05. NotificationOutboxRetryWorker</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">5분</span></div>
+      </div>
+      <code>consumer/.../notification/NotificationOutboxRetryWorker.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>PENDING 조회</b><small>30초 grace, limit 50</small></div>
+      <div class="node"><b>Slack send</b><small>sendOutbox</small></div>
+      <div class="node"><b>성공</b><small>SENT</small></div>
+      <div class="node"><b>실패</b><small>retry_count++</small></div>
+      <div class="node"><b>5회 소진</b><small>FAILED</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-06. OrderDltMonitorListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge bad">P0 DLT 감시</span></div>
+      </div>
+      <code>consumer/.../order/OrderDltMonitorListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>DLT 수신</b><small>order.intent/requested/rejected/filled</small></div>
+      <div class="node"><b>payload 보존</b><small>원본 일부 저장</small></div>
+      <div class="node"><b>outbox</b><small>P0 Slack</small></div>
+      <div class="node"><b>즉시 발송</b><small>운영자 인지</small></div>
+      <div class="node"><b>자체 실패</b><small>swallow + log</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>OPS-07. AiCommentDispatcherListener</h3>
+        <div class="meta"><span class="badge violet">Kafka</span><span class="badge info">AI 요청 처리</span><span class="badge warn">Retry/CircuitBreaker</span></div>
+      </div>
+      <code>consumer/.../ai/AiCommentDispatcherListener.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>요청 수신</b><small>ai.comment.requested</small></div>
+      <div class="node"><b>cache lookup</b><small>hit이면 LLM 0</small></div>
+      <div class="node"><b>provider 결정</b><small>mock/real/auto</small></div>
+      <div class="node"><b>resilience</b><small>retry + circuit</small></div>
+      <div class="node"><b>응답 publish</b><small>ai.comment.responded</small></div>
+    </div>
+  </div>
+
+  <h2 id="batch">Batch 기준정보/성과/법인행위</h2>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-01. InstrumentSeedRunner / MarketCalendarSeedRunner</h3>
+        <div class="meta"><span class="badge info">ApplicationRunner</span><span class="badge ok">정적 시드</span></div>
+      </div>
+      <code>batch/.../bootstrap/*.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>부팅</b><small>DB count 확인</small></div>
+      <div class="node"><b>0건이면</b><small>JSON seed load</small></div>
+      <div class="node"><b>upsert</b><small>instrument/calendar</small></div>
+      <div class="node"><b>옵션</b><small>calendar KIS sync-at-boot</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-02. InstrumentMasterSyncScheduler</h3>
+        <div class="meta"><span class="badge info">ApplicationRunner optional</span><span class="badge info">Scheduled</span><span class="badge warn">13회/영업일</span></div>
+      </div>
+      <code>batch/.../scheduler/InstrumentMasterSyncScheduler.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>cron</b><small>06:05~19:00 13회</small></div>
+      <div class="node"><b>영업일 게이트</b><small>market_calendar</small></div>
+      <div class="node"><b>KIS/마스터</b><small>InstrumentSyncJob</small></div>
+      <div class="node"><b>DB upsert</b><small>instrument/alias</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-03. MarketCalendarSyncJob</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">03:00 KST</span><span class="badge bad">현재 KIS credential 미구현 skip</span></div>
+      </div>
+      <code>batch/.../job/marketcalendar/MarketCalendarSyncJob.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>03:00</b><small>daily</small></div>
+      <div class="node"><b>kisDisabled</b><small>테스트 skip</small></div>
+      <div class="node"><b>KIS chk-holiday</b><small>현재 credential TODO</small></div>
+      <div class="node"><b>upsert</b><small>market_calendar</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-04. CorpActionSyncJob / CandleAdjustmentJob / DartCorpCodeRepository</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge info">PostConstruct</span><span class="badge violet">Kafka</span></div>
+      </div>
+      <code>batch/.../job/corp_action/*.kt</code> · <code>DartCorpCodeRepository.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>DART corp code</b><small>부팅/6시간 cache</small></div>
+      <div class="node"><b>corp action cron</b><small>기본 09:30 서버시간 설정</small></div>
+      <div class="node"><b>KIS/DART 조회</b><small>배당/분할/증자</small></div>
+      <div class="node"><b>pending publish</b><small>corp_action.applied</small></div>
+      <div class="node"><b>candle adjust</b><small>수정주가 소급</small></div>
+      <div class="node"><b>cache invalidation</b><small>indicator cache DEL</small></div>
+    </div>
+    <div class="callout warn">주의: <code>CorpActionSyncJob</code> 주석은 18:30 KST라고 쓰여 있지만 기본 cron은 <code>0 30 9 * * *</code>이고 zone이 명시되지 않았다. 실제 실행 시각은 Spring scheduler timezone 설정 영향을 받는다.</div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-05. DailyPerformanceJob</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">00:30 KST</span><span class="badge ok">KIS 호출 0</span></div>
+      </div>
+      <code>batch/.../job/performance/DailyPerformanceJob.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>T-1 날짜</b><small>KST 기준</small></div>
+      <div class="node"><b>사용자 순회</b><small>order_request distinct</small></div>
+      <div class="node"><b>체결 replay</b><small>평균단가 방식</small></div>
+      <div class="node"><b>pnl_daily</b><small>upsert</small></div>
+      <div class="node"><b>summary</b><small>DAY/WEEK/MONTH/YEAR/ALL</small></div>
+      <div class="node"><b>Redis invalidate</b><small>perf cache</small></div>
+    </div>
+  </div>
+
+  <div class="item">
+    <div class="item-head">
+      <div>
+        <h3>BAT-06. MarketIndexScheduler</h3>
+        <div class="meta"><span class="badge info">Scheduled</span><span class="badge warn">장중 1분 + 일봉</span></div>
+      </div>
+      <code>batch/.../scheduler/MarketIndexScheduler.kt</code>
+    </div>
+    <div class="mini-flow">
+      <div class="node"><b>장중</b><small>09:00~15:30 매분</small></div>
+      <div class="node"><b>영업일 게이트</b><small>KRX calendar</small></div>
+      <div class="node"><b>index sync</b><small>minute</small></div>
+      <div class="node"><b>16:30</b><small>국내 일봉</small></div>
+      <div class="node"><b>06:00</b><small>해외 일봉 TUE-SAT</small></div>
+    </div>
+  </div>
+
+  <h2 id="checklist">운영 점검 체크리스트</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>상황</th><th>먼저 볼 백그라운드 작업</th><th>확인할 흔적</th></tr></thead>
+      <tbody>
+        <tr><td>포지션은 있는데 전략 보유 현황이 없음</td><td><code>KisExecutionWsListener</code>, <code>KisExecutionBackfillService</code>, <code>StrategyPositionExecutionReplayService</code>, <code>ExecutionPersistenceService</code></td><td><code>order_request.strategy_id</code>, <code>idempotencyKey</code>가 <code>WS_PREINSERT</code>/<code>REST_BACKFILL_PREINSERT</code>인지, <code>order_execution.event_id</code>, replay 로그</td></tr>
+        <tr><td>신호는 있는데 주문이 없음</td><td><code>SignalGeneratedKafkaListener</code>, <code>OrderRouterKafkaListener</code></td><td>risk blocked, killSwitch, market-hours, KIS execution sync stale, idempotency skip</td></tr>
+        <tr><td>주문 ACK에서 멈춤</td><td><code>StuckAckExecutionResyncWorker</code>, <code>KisExecutionBackfillService</code>, <code>OrderReconciliationWorker</code></td><td>ACK/PARTIALLY_FILLED stale, KIS daily ccld sync 결과, order status transition</td></tr>
+        <tr><td>차트가 낡음</td><td><code>TickToMinuteAggregator</code>, <code>LastCandleAtMonitor</code>, <code>ColdStartExecutor</code>, <code>CandleBackfillWorker</code></td><td>Redis candle current, last candle ts, reconciliation state, backfill audit</td></tr>
+        <tr><td>Slack/화면 알림이 안 옴</td><td><code>NotificationDispatcher</code>, <code>NotificationOutboxRetryWorker</code>, API <code>Stomp*</code> forwarder</td><td>notification_outbox status, retry_count, stomp_event, Kafka lag</td></tr>
+        <tr><td>KIS WS 불안정</td><td><code>KisWebSocketBridge</code>, <code>WatchlistIngestionWorker</code>, <code>SystemKisKeyChangedListener</code></td><td>WS_CONNECTED/WS_DISCONNECTED/WS_RECONNECTED system_event, approval key cache, reconnect throttle, subscribedCodes</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    작성: 2026-06-09 · 코드 스캔: <code>@Scheduled</code>, <code>@KafkaListener</code>, <code>ApplicationRunner</code>, <code>@PostConstruct</code>, <code>@EventListener</code>, <code>Executors</code>, <code>Schedulers.boundedElastic</code>. 문서는 운영 이해용이며, 실제 활성 여부는 프로필/환경변수/Bean wiring에 의해 달라질 수 있다.
+  </footer>
+</main>
+</body>
+</html>

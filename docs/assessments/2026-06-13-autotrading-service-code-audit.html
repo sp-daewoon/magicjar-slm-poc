@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 자동매매 서비스·코드 레벨 종합 점검 - 2026-06-13</title>
+  <style>
+    :root {
+      --bg:#f4f7fb;--panel:#fff;--ink:#172033;--muted:#667085;--line:#d9e1ec;
+      --ok:#15803d;--warn:#b45309;--bad:#b42318;--blue:#0b66c3;--violet:#6741d9;
+      --soft-ok:#eaf7ee;--soft-warn:#fff4df;--soft-bad:#fff0ef;--soft-blue:#eaf3ff;--soft-violet:#f0ebff;
+      --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 24px rgba(16,24,40,.04);
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    main{max-width:1180px;margin:0 auto;padding:34px 24px 58px}
+    header{display:grid;gap:14px;padding:28px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(135deg,#fff,#eef6ff);box-shadow:var(--shadow)}
+    h1{font-size:29px;margin:0;line-height:1.25}
+    h2{margin:34px 0 0;font-size:21px}
+    h3{font-size:16px;margin:0 0 6px}
+    p{margin:8px 0 0}.muted{color:var(--muted)}.small{font-size:13px}
+    code{padding:1px 5px;border-radius:5px;background:#eef2f7;font-size:13px}
+    a{color:var(--blue);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:750;white-space:nowrap}
+    .badge.ok{color:var(--ok);background:var(--soft-ok)}.badge.warn{color:var(--warn);background:var(--soft-warn)}
+    .badge.bad{color:var(--bad);background:var(--soft-bad)}.badge.info{color:var(--blue);background:var(--soft-blue)}
+    .badge.violet{color:var(--violet);background:var(--soft-violet)}
+    .grid{display:grid;gap:14px}.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:14px;box-shadow:var(--shadow)}
+    .metric{display:grid;gap:6px;min-height:128px}.metric b{font-size:30px;letter-spacing:0}.metric span{font-size:13px;color:var(--muted)}
+    .scorebar{height:8px;border-radius:999px;background:#e8eef6;overflow:hidden}.scorebar>i{display:block;height:100%;border-radius:999px;background:var(--blue)}
+    .scorebar.ok>i{background:var(--ok)}.scorebar.warn>i{background:var(--warn)}.scorebar.bad>i{background:var(--bad)}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:14px}
+    th{color:#344054;background:#f8fafc;font-size:13px}tr:last-child td{border-bottom:0}
+    ul{margin:10px 0 0 20px;padding:0}li{margin:6px 0}
+    .flow{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:8px;margin-top:14px;align-items:stretch}
+    .node{position:relative;padding:14px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;min-height:100px}
+    .node:after{content:"";position:absolute;right:-8px;top:50%;width:8px;height:2px;background:#b6c2d2}.node:last-child:after{display:none}
+    .node strong{display:block;font-size:14px}.node small{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.4}
+    .node.good{border-color:#b8e6c6;background:#f4fbf6}.node.warn{border-color:#f4d19b;background:#fffaf0}.node.bad{border-color:#f3b4ae;background:#fff7f6}
+    .heat td:nth-child(n+2){font-weight:750;text-align:center}.heat .g{background:var(--soft-ok);color:var(--ok)}.heat .y{background:var(--soft-warn);color:var(--warn)}.heat .r{background:var(--soft-bad);color:var(--bad)}.heat .b{background:var(--soft-blue);color:var(--blue)}
+    .finding{border-left:5px solid var(--line)}.finding.p0{border-left-color:var(--bad)}.finding.p1{border-left-color:#e67e22}.finding.p2{border-left-color:var(--blue)}
+    .evidence{margin-top:10px;padding:12px;border-radius:10px;background:#f8fafc;border:1px solid var(--line)}
+    .evidence p{margin:4px 0}.callout{padding:14px;border:1px solid var(--line);border-radius:10px;background:#fbfdff}
+    .timeline{display:grid;gap:10px;margin-top:14px}.step{display:grid;grid-template-columns:92px 1fr;gap:12px;align-items:start}.step b{color:#344054}
+    footer{margin-top:40px;color:var(--muted);font-size:13px}
+    @media (max-width:980px){.cols-4,.cols-3,.cols-2{grid-template-columns:1fr}.flow{grid-template-columns:1fr}.node:after{display:none}.step{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge bad">REAL canary 전 P1 필수</span>
+      <span class="badge info">정적 코드·문서 감사</span>
+      <span class="badge violet">ADR 0124 반영 상태 포함</span>
+    </div>
+    <h1>자동매매 서비스·코드 레벨 종합 점검</h1>
+    <p class="muted">2026-06-13 KST · 대상: api / consumer / batch / domain / strategy-engine / frontend / ADR·운영 문서</p>
+    <p><b>한 줄 결론</b> — 뼈대는 꽤 좋다. 신호→리스크→주문→체결→포지션의 경계가 살아 있고, KIS-first·MOCK/REAL 3중 게이트·ADR 0124 WS 재편도 상당 부분 코드화됐다. 다만 <b>청산 SELL이 Risk Gateway에서 다시 막힐 수 있는 자본 경로 구멍</b>과 <b>Actuator/운영 UI 노출</b>은 실계좌 canary 전 반드시 닫아야 한다.</p>
+  </header>
+
+  <h2>§1. 종합 판정</h2>
+  <div class="grid cols-4">
+    <div class="card metric">
+      <span>종합 준비도</span><b>74/100</b>
+      <div class="scorebar warn"><i style="width:74%"></i></div>
+      <p class="small">구조는 양호, 자본 path와 운영 노출이 점수 하락 요인.</p>
+    </div>
+    <div class="card metric">
+      <span>MOCK 운영</span><b>84/100</b>
+      <div class="scorebar ok"><i style="width:84%"></i></div>
+      <p class="small">페이퍼·MOCK 검증은 가능. 알림/로그 노이즈 정리는 계속 필요.</p>
+    </div>
+    <div class="card metric">
+      <span>REAL canary</span><b>68/100</b>
+      <div class="scorebar warn"><i style="width:68%"></i></div>
+      <p class="small">SELL 청산 불변식과 management hardening 없이는 보류 권장.</p>
+    </div>
+    <div class="card metric">
+      <span>ADR 정합</span><b>78/100</b>
+      <div class="scorebar ok"><i style="width:78%"></i></div>
+      <p class="small">핵심 구현은 최신 ADR에 근접. 주변 문서·테스트 샘플은 잔상이 남음.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>좋은 신호</h3>
+    <ul>
+      <li><b>모듈 경계</b>: <code>domain</code>은 Spring/JPA/Kafka 의존 없이 유지되고, 핵심 룰 계산이 비교적 순수하게 분리돼 있다.</li>
+      <li><b>자본 안전 게이트</b>: 기본 모드 <code>MOCK</code>, <code>MAGICJAR_ALLOW_REAL=false</code>, 사용자 동의 토글, KillSwitch, canary cap이 계층적으로 존재한다.</li>
+      <li><b>KIS-first</b>: H0UNCNT0 단일 체결가, H0UNASP0 통합 호가, 실제 KIS 조회 기반 backfill·잔고·체결 정합 노력이 코드에 많이 들어왔다.</li>
+      <li><b>관측과 회고</b>: Prometheus/Actuator, Slack outbox, DLT monitor, 평가 문서 인덱스가 있어 운영 학습 루프를 만들 수 있다.</li>
+    </ul>
+  </div>
+
+  <h2>§2. 자동매매 서비스 흐름</h2>
+  <div class="card">
+    <div class="flow">
+      <div class="node good"><strong>Market Data</strong><small>KIS WS H0UNCNT0/H0UNASP0 + REST polling/backfill. ADR 0124로 watchlist는 polling 전용.</small></div>
+      <div class="node good"><strong>Signal</strong><small>RealtimeSignalGenerator. BUY fail-closed, SELL 청산 진행 원칙이 코드 주석과 로직에 반영.</small></div>
+      <div class="node bad"><strong>Risk Gateway</strong><small>6룰 short-circuit. DAILY_LOSS / TRADE_FREQUENCY가 SELL에도 적용되어 청산 원칙과 충돌 가능.</small></div>
+      <div class="node warn"><strong>Order Intent</strong><small>Kafka order.intent.v1. poison pill skip은 있으나 DLQ 정식화는 일부 backlog.</small></div>
+      <div class="node warn"><strong>Order Router</strong><small>3중 게이트 + KIS 체결 sync + canary cap + KIS 주문. 안정성은 높지만 latency 의존 큼.</small></div>
+      <div class="node good"><strong>Execution</strong><small>KIS WS 체결통보 + REST backfill + position/strategy_position 갱신. 최근 drift 방어 개선 흔적 큼.</small></div>
+      <div class="node warn"><strong>Operate</strong><small>Actuator/env/loggers, Kafka UI, Dozzle가 dev-friendly. 네트워크 노출 시 즉시 hardening 필요.</small></div>
+    </div>
+  </div>
+
+  <h2>§3. 리스크 히트맵</h2>
+  <div class="card">
+    <table class="heat">
+      <thead><tr><th>영역</th><th>설계</th><th>코드</th><th>테스트</th><th>운영</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>신호 생성·청산 게이트</td><td class="g">좋음</td><td class="g">좋음</td><td class="b">보통+</td><td class="b">보통</td><td>SELL 보장 의도가 명확함</td></tr>
+        <tr><td>Risk Gateway</td><td class="y">주의</td><td class="r">위험</td><td class="y">갭</td><td class="r">REAL 차단</td><td>청산 SELL 재차단 가능</td></tr>
+        <tr><td>주문 라우터·KIS 주문</td><td class="g">좋음</td><td class="b">보통+</td><td class="b">보통</td><td class="y">주의</td><td>sync 보호와 latency 트레이드오프</td></tr>
+        <tr><td>WS 시세·slot 정책</td><td class="g">좋음</td><td class="g">좋음</td><td class="b">보통+</td><td class="b">보통</td><td>ADR 0124 핵심은 코드 반영</td></tr>
+        <tr><td>JPA/모듈 스캔</td><td class="y">주의</td><td class="y">주의</td><td class="y">갭</td><td class="y">주의</td><td>화이트리스트 누락 재발 가능</td></tr>
+        <tr><td>로그·개인 식별자</td><td class="y">주의</td><td class="y">혼재</td><td class="r">부족</td><td class="y">주의</td><td>mask 정책이 파일별로 다름</td></tr>
+        <tr><td>운영 노출·관리면</td><td class="r">위험</td><td class="r">위험</td><td class="y">갭</td><td class="r">REAL 차단</td><td>인증 없는 actuator/env/loggers</td></tr>
+        <tr><td>ADR·Living Policy</td><td class="b">보통+</td><td class="g">좋음</td><td class="b">보통</td><td class="y">주의</td><td>최신 결정의 문서 전파 잔여</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§4. 핵심 발견</h2>
+
+  <div class="card finding p0">
+    <div><span class="badge bad">P0-canary blocker</span> <span class="badge warn">자본 경로</span></div>
+    <h3>1. 청산 SELL이 Risk Gateway에서 다시 막힐 수 있다</h3>
+    <p>신호 생성기는 ADR 0114 방향대로 “BUY fail-closed, SELL 청산 진행”으로 분화되어 있다. 그런데 하위 <code>RiskGatewayEvaluator</code>에서 <code>DAILY_LOSS_LIMIT</code>, <code>TRADE_FREQUENCY_MINUTE</code>, <code>TRADE_FREQUENCY_DAY</code>가 BUY/SELL 구분 없이 적용된다. 손절·익절·DSL 청산 SELL이 일일손실한도나 분당/일별 빈도 한도 때문에 order.intent로 못 내려갈 수 있다.</p>
+    <div class="evidence">
+      <p><b>근거</b></p>
+      <p><code>consumer/.../signal/RealtimeSignalGenerator.kt:200-204</code> — “fail-closed는 신규 자본 투입(BUY)에만, SELL은 막지 않는다” 불변식.</p>
+      <p><code>consumer/.../risk/RiskGatewayEvaluator.kt:67-112</code> — DAILY_LOSS_LIMIT가 side guard 없이 먼저 차단.</p>
+      <p><code>consumer/.../risk/RiskGatewayEvaluator.kt:170-198</code> — TRADE_FREQUENCY_MINUTE/DAY가 side guard 없이 차단.</p>
+      <p><code>consumer/.../risk/RiskGatewayEvaluator.kt:294-320</code> — preCheckFreeRules도 SELL 구분 없이 빈도 차단.</p>
+      <p><code>consumer/.../risk/RiskGatewayEvaluatorTest.kt:95-104</code> — SELL 통과 테스트는 MAX_CONCURRENT/POSITION_LIMIT만 검증. daily loss/frequency SELL 회귀 테스트 없음.</p>
+    </div>
+    <p><b>권장</b>: <code>DAILY_LOSS_LIMIT</code>와 <code>TRADE_FREQUENCY_*</code>를 “신규 진입(BUY) 룰”로 명시하거나, <code>ENTRY_TRADE_FREQUENCY</code>와 <code>EXIT_THROTTLE</code>을 분리한다. 최소 회귀 테스트 3개를 추가한다: SELL+daily loss 도달, SELL+minute/day 한도 도달, preCheckFreeRules SELL 빈도 한도. 단, <code>KILL_SWITCH_ON</code>은 현재 테스트가 SELL 차단을 명시하므로 별도 ADR/결재 없이 풀지 않는다.</p>
+  </div>
+
+  <div class="card finding p1">
+    <div><span class="badge bad">P1</span> <span class="badge warn">운영·보안</span></div>
+    <h3>2. Actuator/env/loggers가 인증 없이 통과된다</h3>
+    <p>현재 코드는 단일 사용자 개발 환경에는 편하지만, VPS나 외부망에 열리는 순간 설정·환경·운영 제어면 노출이 된다. Spring Security도 없고, OnboardingGuardFilter가 <code>/actuator/**</code>를 통과시킨다.</p>
+    <div class="evidence">
+      <p><code>api/.../OnboardingGuardFilter.kt:19-21</code> — Spring Security/JWT 미도입, user_account 존재 시 모든 API 통과.</p>
+      <p><code>api/.../OnboardingGuardFilter.kt:37-41</code> — <code>/actuator/</code> 전면 통과.</p>
+      <p><code>api/src/main/resources/application.yml:65-72</code>, <code>consumer/.../application.yml:47-55</code>, <code>batch/.../application.yml:36-44</code> — <code>health, info, metrics, prometheus, loggers, env</code> 노출 + health details always.</p>
+      <p><code>docker/docker-compose.yml:99</code>, <code>:117</code>, <code>:170</code>, <code>:216</code>, <code>:251</code> — Dozzle/Kafka UI/api/batch/consumer host port 노출. Kafka UI는 <code>AUTH_TYPE=DISABLED</code>.</p>
+    </div>
+    <p><b>권장</b>: REAL profile에서는 <code>health,prometheus</code>만 노출하고 <code>env/loggers</code>는 제거하거나 인증/IP allowlist 뒤로 보낸다. host binding은 <code>127.0.0.1:</code> 또는 VPN/internal network로 제한하고, health details는 <code>never</code> 또는 <code>when-authorized</code>로 바꾼다.</p>
+  </div>
+
+  <div class="card finding p2">
+    <div><span class="badge warn">P2</span> <span class="badge info">성능·가용성</span></div>
+    <h3>3. 주문 hot path가 KIS 체결 sync와 blocking I/O에 강하게 묶여 있다</h3>
+    <p>주문 직전 KIS 당일 체결 sync는 데이터 정합을 높이는 좋은 안전장치다. 하지만 Kafka listener 한 흐름에서 모든 주문 전에 KIS REST sync가 수행되고, KIS 주문 어댑터도 <code>.block()</code> 기반이다. KIS 장애·rate limit·응답 지연이 order.intent 처리량과 p95 latency를 바로 흔들 수 있다.</p>
+    <div class="evidence">
+      <p><code>consumer/.../order/OrderRouterKafkaListener.kt:147-151</code> — manualImmediate Kafka listener.</p>
+      <p><code>consumer/.../order/OrderRouterKafkaListener.kt:296-300</code> — 주문 처리 전에 sync guard 실패 시 reject.</p>
+      <p><code>consumer/.../order/OrderRouterKafkaListener.kt:676-705</code> — <code>syncUserTodayExecutions</code>를 매 주문 전 수행.</p>
+      <p><code>consumer/.../order/KisOrderHttpAdapter.kt:246-260</code> — KIS 주문 REST 호출 <code>.block()</code>.</p>
+    </div>
+    <p><b>권장</b>: “최근 N초 이내 complete sync” freshness cache를 두고 중복 sync를 줄인다. KIS sync latency, order.intent lag, KIS rate-limit wait를 S-1 dashboard에 붙인다. 장기적으로 WebClient blocking 호출을 격리 executor/boundedElastic 계약으로 표준화한다.</p>
+  </div>
+
+  <div class="card finding p2">
+    <div><span class="badge warn">P2</span> <span class="badge info">모듈 구조</span></div>
+    <h3>4. JPA scan 화이트리스트는 다시 누락될 수 있다</h3>
+    <p>ADR 0103이 이미 같은 계열의 부팅 실패를 기록했는데, 현재도 api/consumer가 명시 package whitelist를 유지한다. 새 persistence root가 생기면 컴파일은 되더라도 런타임 부팅에서 repository bean 누락이 재발할 수 있다.</p>
+    <div class="evidence">
+      <p><code>api/.../config/JpaScanConfiguration.kt:47-60</code> — api persistence, api.mcp.persistence, persistence.shared만 scan.</p>
+      <p><code>consumer/.../config/JpaScanConfiguration.kt:21-32</code> — consumer persistence, persistence.shared만 scan.</p>
+      <p><code>api/.../config/JpaScanConfiguration.kt:63-74</code> — 과거 mcp persistence 누락 hotfix와 장기 fix 후보가 주석으로 남아 있음.</p>
+    </div>
+    <p><b>권장</b>: 최소한 api/consumer <code>@SpringBootTest</code> context smoke test를 “새 repository/entity 누락” 방지망으로 추가한다. 다음 사이클에서 ADR 0103 옵션 A(상위 패키지 scan) 또는 package convention enforcement를 정식화한다.</p>
+  </div>
+
+  <div class="card finding p2">
+    <div><span class="badge warn">P2</span> <span class="badge info">정보보호·운영성</span></div>
+    <h3>5. userId 로그 마스킹이 파일마다 다르다</h3>
+    <p>일부 주문·계좌 파일은 <code>maskUserId</code>를 잘 쓰지만, risk/order/api 서비스 전반에는 raw <code>userId={}</code> 로그가 아직 많다. 개인 시스템에서는 낮은 위험이지만, 원격 로그/Slack/Dozzle로 퍼지는 순간 운영 데이터가 불필요하게 넓어진다.</p>
+    <div class="evidence">
+      <p><code>consumer/.../risk/SignalGeneratedKafkaListener.kt:1068-1070</code> — SELL capital 조회 로그 raw userId.</p>
+      <p><code>consumer/.../order/OrderRouterKafkaListener.kt:689-699</code> — KIS sync guard 로그 raw userId.</p>
+      <p><code>consumer/.../order/TradingModeGateImpl.kt:74-104</code> — REAL gate 로그 raw userId.</p>
+      <p><code>docs/architecture/policies/logging-levels.md:36-66</code> — 로그 레벨 정책은 있으나 PII/masking 표준은 없음.</p>
+    </div>
+    <p><b>권장</b>: 공용 <code>UserIdLogMasker</code> 또는 logging extension을 만들고, policy에 “userId는 기본 masking, audit table만 원문 보존” 원칙을 추가한다.</p>
+  </div>
+
+  <div class="card finding p2">
+    <div><span class="badge warn">P2</span> <span class="badge info">확장성</span></div>
+    <h3>6. KIS credential 조회가 multi-user 확장에 약하다</h3>
+    <p>현재는 개인·single-tenant 전제라 큰 문제는 아니지만, 서비스 레벨로 보면 KIS credential을 accountType 전체 조회 후 userId로 필터링하는 코드가 반복된다. 사용자가 늘면 성능과 실수 여지가 생긴다.</p>
+    <div class="evidence">
+      <p><code>consumer/.../order/KisOrderHttpAdapter.kt:106-110</code> — <code>findAllByAccountType(...).firstOrNull { userId }</code>.</p>
+      <p><code>consumer/.../order/KisOrderHttpAdapter.kt:372-377</code> — 취소 경로도 동일 패턴.</p>
+      <p><code>docs/architecture/policies/kis-credential-identity.md:16-25</code> — 식별 규약은 있지만 repository 직접 lookup 규약은 약함.</p>
+    </div>
+    <p><b>권장</b>: repository에 <code>findByUserIdAndAccountType</code>를 1급 API로 두고, KIS auth/order/balance 계열에서 전체 조회 필터링을 제거한다. KIS WS execution notice도 single user 설정에서 multi-user 모델로 갈지 별도 결정을 남긴다.</p>
+  </div>
+
+  <h2>§5. ADR 꼬임·문서 잔상</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>지점</th><th>현재 상태</th><th>위험</th><th>권장</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>CLAUDE.md</code> vs <code>CODEX.md</code></td>
+          <td><code>CLAUDE.md:25-26</code>은 ADR 0124를 반영. <code>CODEX.md:16-17</code>은 watchlist 단독 금지·DETAIL/STRATEGY 수요는 말하지만 “watchlist WS 폐지→polling 전용, H0UNCNT0 단일”이 명시되지 않음.</td>
+          <td>새 작업자가 예전 slot/owner 전제를 들고 들어올 수 있음.</td>
+          <td><code>CODEX.md</code>를 ADR 0124 문구로 동기화.</td>
+        </tr>
+        <tr>
+          <td>Living Policy 누락</td>
+          <td><code>docs/architecture/policies/README.md</code>는 “현행 권위” 폴더라고 선언하지만 KIS WS demand/slot 정책 문서는 없음.</td>
+          <td>ADR은 이력, policy는 현행 권위라는 룰과 어긋남.</td>
+          <td><code>kis-realtime-demand-policy.md</code> 신설. ADR 0048/0123/0124 요약을 현행 규약으로 압축.</td>
+        </tr>
+        <tr>
+          <td>로드맵 잔상</td>
+          <td><code>docs/architecture/tracks-roadmap.md:30</code> T-W2가 여전히 “KIS WS sub”를 포함.</td>
+          <td>watchlist polling 전용 결정과 충돌.</td>
+          <td>T-W2 설명을 polling 전용 + owner demand 분리로 정정.</td>
+        </tr>
+        <tr>
+          <td>ADR 상태 잔상</td>
+          <td><code>docs/architecture/master-architecture.md:629</code>는 ADR 0116을 Proposed로 설명하지만 ADR README는 Accepted.</td>
+          <td>rate-limit 정책 적용 상태 판단이 흔들림.</td>
+          <td>master row status와 변경 이력 정리.</td>
+        </tr>
+        <tr>
+          <td>프론트 테스트 샘플</td>
+          <td><code>frontend/src/__tests__/admin/realtime-status.test.tsx:139-157</code>, <code>:195</code>에 H0STCNT0 샘플이 남아 있음.</td>
+          <td>구버전 호환 테스트면 OK. 최신 기본값 샘플로 읽히면 혼란.</td>
+          <td>테스트명을 “legacy snapshot”으로 더 명확히 하거나 H0UNCNT0 중심 fixture로 갱신.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§6. 개선 우선순위</h2>
+  <div class="card">
+    <div class="timeline">
+      <div class="step"><b>오늘</b><div><b>SELL 청산 회귀 방지</b><br />RiskGatewayEvaluator의 daily loss/frequency 룰을 BUY-only 또는 entry-only로 분리. preCheckFreeRules까지 같은 기준 적용. 회귀 테스트 3개 추가.</div></div>
+      <div class="step"><b>오늘</b><div><b>운영 노출 차단</b><br />REAL profile 기준 actuator include 축소, health detail 숨김, Kafka UI/Dozzle 제외 또는 내부망 제한, host port loopback bind.</div></div>
+      <div class="step"><b>3일</b><div><b>JPA scan smoke + logging mask</b><br />api/consumer context smoke test 추가. userId masking 공용 helper와 logging policy 보강.</div></div>
+      <div class="step"><b>1주</b><div><b>주문 path latency 계측</b><br />KIS execution sync freshness cache, order.intent lag, KIS sync p95, rate-limit wait dashboard 추가.</div></div>
+      <div class="step"><b>1주</b><div><b>ADR 0124 문서 전파</b><br />CODEX, tracks-roadmap, living policy, legacy fixture 설명 정리. “watchlist polling 전용”을 현행 정책으로 고정.</div></div>
+      <div class="step"><b>2주</b><div><b>service-level 확장 결정</b><br />multi-user KIS credential lookup, WS execution notice user model, management authentication을 개인 시스템 경계와 분리해서 결정.</div></div>
+    </div>
+  </div>
+
+  <h2>§7. 테스트·검증 제안</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>검증</th><th>목적</th><th>권장 테스트명</th></tr></thead>
+      <tbody>
+        <tr><td>SELL + daily loss 도달</td><td>손실 한도 도달 후 손절이 막히지 않는지</td><td><code>DAILY_LOSS_LIMIT은 SELL 청산을 차단하지 않는다</code></td></tr>
+        <tr><td>SELL + minute/day frequency 도달</td><td>폭주 방지 룰이 exit을 막지 않는지</td><td><code>TRADE_FREQUENCY는 신규 BUY만 차단한다</code></td></tr>
+        <tr><td>preCheckFreeRules SELL</td><td>KIS sync 전 빠른 차단 경로까지 동일한지</td><td><code>preCheckFreeRules는 SELL 빈도 한도를 통과시킨다</code></td></tr>
+        <tr><td>Actuator real profile</td><td>env/loggers가 외부에 안 보이는지</td><td><code>real profile actuator exposure is hardened</code></td></tr>
+        <tr><td>JPA context smoke</td><td>신규 repository root 누락 조기 감지</td><td><code>ApiApplicationContextSmokeTest</code>, <code>ConsumerApplicationContextSmokeTest</code></td></tr>
+        <tr><td>ADR 0124 admin status</td><td>slot snapshot이 H0UNCNT0/H0UNASP0 중심인지</td><td><code>RealtimeStatusSnapshotPublisherTest</code> fixtures 최신화</td></tr>
+      </tbody>
+    </table>
+    <p class="muted small">이번 문서 발행 과정에서는 코드 변경이 없어서 Gradle/Jest 테스트는 실행하지 않았다. 리포트는 <code>rg</code>, <code>sed</code>, 정적 코드·문서 교차검증 기반이다.</p>
+  </div>
+
+  <h2>§8. 결론</h2>
+  <div class="card callout">
+    <p>자동매매 본체는 “다시 처음부터 갈아엎어야 하는 상태”가 아니다. 오히려 지금은 구조가 꽤 성숙해져서, 남은 위험이 더 또렷하게 보이는 단계다. 가장 먼저 손볼 것은 큰 리팩터링이 아니라 <b>SELL 청산을 절대 막지 않는 룰 경계</b>와 <b>운영 관리면 hardening</b>이다.</p>
+    <p>이 두 가지를 닫으면 MOCK 운영은 계속 굴려도 되고, REAL canary도 “작은 금액 + 제한 종목 + 대시보드 관측” 전제로 한 단계 올라갈 수 있다. ADR 쪽은 구현보다 문서 전파가 뒤처진 상태라, 다음 설계 작업 전에 최신 SoT를 정리하는 편이 좋다.</p>
+  </div>
+
+  <footer>
+    작성: Codex static audit · 범위: local repository read-only analysis + assessment HTML/index update · 파일명 규약: ADR 0108 · 새 slug 최초 발행이라 직전 점수 diff 없음.
+  </footer>
+</main>
+</body>
+</html>

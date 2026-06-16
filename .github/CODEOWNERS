@@ -1,0 +1,21 @@
+# magicJar CODEOWNERS — Phase E-P3 (ADR 0017)
+# 단일 1인 소유자. 향후 팀 확장 대비 디렉토리별 소유자 분리 자리 마련.
+
+*                  @sp-daewoon
+
+# CI/CD · 인프라
+/.github/          @sp-daewoon
+/docker/           @sp-daewoon
+/scripts/          @sp-daewoon
+
+# 아키텍처 산출물
+/_workspace/arch/  @sp-daewoon
+/docs/             @sp-daewoon
+
+# 도메인 · 앱
+/domain/           @sp-daewoon
+/api/              @sp-daewoon
+/batch/            @sp-daewoon
+/consumer/         @sp-daewoon
+/pyworker/         @sp-daewoon
+/frontend/         @sp-daewoon

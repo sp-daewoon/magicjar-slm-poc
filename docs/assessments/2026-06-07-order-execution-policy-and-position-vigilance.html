@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 주문 집행 정책 + 포지션 긴장 상태 검토 - 2026-06-07</title>
+  <style>
+    :root {
+      --bg: #f6f8fb; --panel: #ffffff; --ink: #172033; --muted: #667085;
+      --line: #d9e1ec; --ok: #15803d; --warn: #b45309; --bad: #b42318; --blue: #0b66c3;
+      --soft-ok: #eaf7ee; --soft-warn: #fff4df; --soft-bad: #fff0ef; --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 54px; }
+    header { display: grid; gap: 14px; padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%); }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; font-size: 13px; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+    .span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; } .span-6 { grid-column: span 6; } .span-12 { grid-column: span 12; }
+    .score { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+    .score strong { font-size: 34px; line-height: 1; }
+    .bar { height: 10px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #e8edf4; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .okbar { background: var(--ok); } .warnbar { background: var(--warn); } .badbar { background: var(--bad); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    pre { margin: 12px 0 0; padding: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #0f172a; color: #dbe7ff; font-size: 13px; line-height: 1.6; }
+    .hl-bad { color: #fda4a4; font-weight: 700; } .hl-ok { color: #86efac; font-weight: 700; }
+    .alert { margin-top: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid; }
+    .alert.bad { border-color: #f3b6b1; background: var(--soft-bad); }
+    .alert b:first-child { display: block; margin-bottom: 4px; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge info">ASSESSMENT · order-execution-vigilance · 첫 발행</span>
+      <span class="badge bad">Critical 2건 발견</span>
+      <span class="badge warn">실매매 전 필수 조치</span>
+    </div>
+    <h1>주문 집행 정책 + 포지션 "긴장 상태" 검토</h1>
+    <p class="muted">발행 2026-06-07 · 사용자(최고 관리자) 질문 2건 — "시장가로만 사고 있지 않나? + 포지션 보유 중 시스템이 긴장 상태인가?" · 코드 전수(파일:라인 인용) + KIS 공식 스펙(open-trading-api) 실측</p>
+    <p><b>핵심 결론</b> — ① 자동매매는 진입·청산 전부 <b>시장가 고정</b>이며 가격 보호 정책 0. ② KIS 국내주식 OpenAPI에 <b>서버 예약형 스탑로스는 존재하지 않아</b> 클라이언트 감시가 유일한 경로 = 우리 시스템이 곧 스탑로스. ③ 그 감시 구조는 backend 독립(화면 무관)으로 견고하나, <b>"항상"의 보장에 구멍 4개</b> — 특히 <b>readiness fail-closed가 손절까지 막는 것</b>과 <b>DISABLED 전략의 보유 포지션 방치</b>는 Critical.</p>
+  </header>
+
+  <!-- §1 종합 스코어 -->
+  <h2>§1. 종합 판정</h2>
+  <div class="grid">
+    <div class="card span-3">
+      <h3>청산 감시 아키텍처</h3>
+      <div class="score"><strong>88</strong><span class="muted">/100</span><span class="badge ok">backend 독립</span></div>
+      <div class="bar"><span class="okbar" style="width:88%"></span></div>
+      <p class="muted">consumer JVM 매분 자동 평가 — 브라우저 닫혀도 동작</p>
+    </div>
+    <div class="card span-3">
+      <h3>"항상" 보장 (긴장 상태)</h3>
+      <div class="score"><strong>52</strong><span class="muted">/100</span><span class="badge bad">조건부</span></div>
+      <div class="bar"><span class="badbar" style="width:52%"></span></div>
+      <p class="muted">watchlist·전략 활성·readiness·시간대 4중 의존 — gap 존재</p>
+    </div>
+    <div class="card span-3">
+      <h3>주문 가격 보호</h3>
+      <div class="score"><strong>15</strong><span class="muted">/100</span><span class="badge bad">전부 시장가</span></div>
+      <div class="bar"><span class="badbar" style="width:15%"></span></div>
+      <p class="muted">슬리피지 캡·스프레드 게이트 0 (배선은 준비됨)</p>
+    </div>
+    <div class="card span-3">
+      <h3>체결→포지션 정합</h3>
+      <div class="score"><strong>85</strong><span class="muted">/100</span><span class="badge ok">atomic</span></div>
+      <div class="bar"><span class="okbar" style="width:85%"></span></div>
+      <p class="muted">체결통보→position/strategy_position 동일 tx upsert·부분체결 수량 정확</p>
+    </div>
+  </div>
+
+  <!-- §2 현재 실태 -->
+  <h2>§2. 현재 실태 (evidence)</h2>
+  <div class="card span-12">
+    <h3>2-1. 자동매매 = 진입·청산 전부 시장가</h3>
+    <pre>// OrderRouterKafkaListener.kt:948-952 — ADR 0067 publisher가 priceType 미발행 → default 채움
+val priceType = priceTypeName?.let { ... } ?: <span class="hl-bad">OrderPriceType.MARKET</span>   // BUY·SELL 공통
+// → KIS ORD_DVSN="01"(시장가), ORD_UNPR="0" (KisOrderHttpAdapter.kt:542-544)</pre>
+    <p><code>OrderPriceType(MARKET/LIMIT)</code> + <code>limitPrice</code> 배선은 도메인→Kafka→KIS adapter까지 <b>전 구간 완성</b> — 시그널 단계의 가격 결정 정책만 부재. 수동 주문(ManualOrderService)만 LIMIT 선택 가능.</p>
+    <h3 style="margin-top:18px">2-2. KIS 국내주식 OpenAPI에 스탑로스 예약 없음 (공식 스펙 확정)</h3>
+    <table>
+      <thead><tr><th>후보</th><th>실체</th><th>스탑로스?</th></tr></thead>
+      <tbody>
+        <tr><td>주식예약주문 <code>CTSC0008U</code></td><td><b>시간 예약</b> — 15:40~익영업일 07:30 접수, 장 시작 시 전송 (기간예약 최대 30일)</td><td>❌ 가격 조건 트리거 아님</td></tr>
+        <tr><td>조건부지정가 <code>ORD_DVSN=02</code></td><td>장중 지정가 → 15:20 시장가 전환 (KRX 호가 유형)</td><td>❌</td></tr>
+        <tr><td>HTS/MTS 자동감시주문</td><td>단말 전용 기능</td><td>❌ OpenAPI 미노출</td></tr>
+      </tbody>
+    </table>
+    <div class="alert bad">
+      <b>구조적 함의</b>
+      서버에 스탑로스를 맡길 방법이 없으므로 <b>magicJar 자체가 스탑로스 장치</b>다. 시스템(consumer)이 멈추면 손절도 멈춘다 — 청산 감시의 "항상" 보장(§4)이 자본 안전의 본체이고, DR/백업·WS watchdog·재기동 복구가 부가 기능이 아니라 안전장치인 이유.
+    </div>
+  </div>
+
+  <!-- §3 룰 비교 -->
+  <h2>§3. 주문 집행 룰 비교 — 사용자 추천 룰 채택</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>항목</th><th>orchestrator 초안</th><th>사용자 추천 룰</th><th>판정</th></tr></thead>
+      <tbody>
+        <tr><td>진입 가격</td><td>지정가 (모호 — 기준 미정)</td><td><b>Marketable limit</b> — 매도1호가에 걸되 상한(기준가+slippage%) 초과면 스킵</td><td><span class="badge ok">사용자 안</span> 체결 노리되 상한 보호 — 소극적 1호가-밑 지정가의 미체결 추격 문제 해소</td></tr>
+        <tr><td>진입 실패</td><td>타임아웃 시 시장가 전환 옵션</td><td><b>취소/스킵 — 따라가지 않음</b></td><td><span class="badge ok">사용자 안</span> 시장가 전환은 슬리피지 캡 자기 부정</td></tr>
+        <tr><td>스프레드 게이트</td><td>없음 (누락)</td><td><b>0.3% 초과 진입 금지</b></td><td><span class="badge ok">사용자 안</span> 유동성 경고 필터 — 초안의 결함</td></tr>
+        <tr><td>손절</td><td>시장가</td><td>시장가 (스탑지정가는 보조 — 단 KIS에 없음)</td><td>동일 — 체결 확실성 &gt; 가격</td></tr>
+        <tr><td>익절</td><td>지정가 검토</td><td>지정가</td><td>동일</td></tr>
+        <tr><td>부분체결</td><td>누락</td><td><b>체결 수량만 포지션 인정</b></td><td><span class="badge ok">사용자 안</span> — 현행 코드도 수량 정확(§4-8), 정책으로 명문화</td></tr>
+        <tr><td>설정화</td><td>없음</td><td>전략별 <code>maxEntrySlippagePct</code>·<code>entryTimeoutSec</code>·<code>maxSpreadPct</code></td><td><span class="badge ok">사용자 안</span> RiskPlan JSONB(ADR 0111) 패턴 정합</td></tr>
+      </tbody>
+    </table>
+    <h3 style="margin-top:18px">권장 시작 기본값 (보수 시작 → 체결률 데이터로 완화)</h3>
+    <table>
+      <thead><tr><th>파라미터</th><th>기본값</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td>진입</td><td>marketable limit (매도1호가, 상한 = 신호 기준가 × (1+slippage))</td><td>상한 초과 시 스킵</td></tr>
+        <tr><td>maxEntrySlippagePct</td><td><b>0.2%</b></td><td>0.2~0.3 범위 중 보수쪽</td></tr>
+        <tr><td>entryTimeoutSec</td><td><b>15초</b></td><td>미체결 시 취소 — 시장가 전환 없음</td></tr>
+        <tr><td>재시도</td><td><b>0회</b></td><td>허용 시에도 기준가는 원래 신호 가격 유지 (현재가 갱신 = 추격)</td></tr>
+        <tr><td>maxSpreadPct</td><td><b>0.3%</b></td><td>초과 시 진입 금지 + 호가 잔량 약하면 스킵</td></tr>
+        <tr><td>손절 / 익절</td><td>시장가 / 지정가</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §4 긴장 상태 검토 -->
+  <h2>§4. 포지션 "긴장 상태" 검토 — 8개 축 매트릭스 (코드 전수)</h2>
+  <div class="card span-12">
+    <h3>평가 체인 (실제 구조)</h3>
+    <pre>KIS WS tick → boundary 집계 → Kafka market.candle.1m.closed.v1
+  → BoundaryClosingKafkaListener (consumer)
+  → RealtimeSignalGenerator.onBoundaryClosed()
+     ├─ <span class="hl-bad">① market-hours gate (09:00~15:30만)</span>      RealtimeSignalGenerator.kt:136-143
+     ├─ <span class="hl-bad">② data readiness gate (READY 아니면 skip)</span> RealtimeSignalGenerator.kt:145-161
+     ├─ <span class="hl-bad">③ findActiveByCodeAndInterval (ACTIVE·BUY_BLOCKED만)</span> ConsumerStrategyJpaRepository.kt:12-23
+     └─ ScaleInExitCalculator.evaluate() → StopLoss/PartialTakeProfit/TakeProfit
+  → SELL Signal → Kafka → RiskGateway·KillSwitch → KIS 시장가 주문</pre>
+    <p class="muted">※ 평가는 <b>매 tick이 아니라 1m 캔들 마감 기준</b> — 손절 반응에 최대 ~1분 지연이 구조적으로 내재 (노이즈 차단 trade-off로 수용 가능 범위, 단 인지 필요).</p>
+    <table>
+      <thead><tr><th>#</th><th>축</th><th>판정</th><th>핵심 evidence</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>청산 평가 주체 (RealtimeSignalGenerator + ScaleInExitCalculator)</td><td><span class="badge ok">✅ 견고</span></td><td>매분 자동 평가 · sealed decision으로 STOP_LOSS/익절 명확 분기</td></tr>
+        <tr><td>2</td><td><b>frontend 의존성</b></td><td><span class="badge ok">✅ 0 — 화면 무관</span></td><td>consumer JVM 독립 실행, STOMP는 사후 표시 전용 — <b>브라우저 닫혀도 청산 동작</b> (질문 답: 백엔드에서 함)</td></tr>
+        <tr><td>3</td><td>보유 종목 KIS WS 구독 보장</td><td><span class="badge warn">⚠️ watchlist 의존</span></td><td>owner enum에 HOLDING/POSITION 없음 — watchlist에서 빼면 41 slot 경합 시 <b>보유 종목도 evict 가능</b> (Router.kt:169-184 — position 미고려)</td></tr>
+        <tr><td>4</td><td>WS 끊김 fallback</td><td><span class="badge warn">⚠️ 불완전</span></td><td>5초 REST 폴링이 <b>1d봉만</b> fetch (PollingWorker.kt:76) — 1m 청산 평가 재료가 안 됨</td></tr>
+        <tr><td>5</td><td><b>readiness fail-closed</b></td><td><span class="badge bad">❌ Critical</span></td><td>RECONCILING/STALE이면 <b>진입·청산 구분 없이 일괄 skip</b> — 손절가 도달해도 평가 안 함 (Generator.kt:145-161)</td></tr>
+        <tr><td>6</td><td>market-hours gate</td><td><span class="badge warn">⚠️ 중-고</span></td><td>NXT 시간대(08~09시·15:30~20시) <b>보유 포지션 손절도 차단</b> — BUY/SELL 미분화 (Generator.kt:136-143)</td></tr>
+        <tr><td>7</td><td><b>DISABLED 전략의 보유 포지션</b></td><td><span class="badge bad">❌ Critical</span></td><td>auto-disable(timeout/CPU 위반)된 전략은 조회 제외 → <b>그 전략이 만든 포지션은 청산 평가 대상에서 사라짐</b>. position 기반 폴백 0</td></tr>
+        <tr><td>8</td><td>체결→포지션 인식</td><td><span class="badge ok">✅ atomic</span></td><td>체결통보→position/strategy_position 동일 tx upsert, 부분체결 수량 정확 (`executedQuantity.coerceAtLeast(0)`)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§5. 위험 우선순위 + 복구 방향</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>순위</th><th>위험</th><th>시나리오</th><th>복구 방향</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge bad">P1</span></td><td><b>readiness가 손절까지 skip</b> (§4-5)</td><td>보유 종목 캔들 reconciliation 중 손절가 이탈 → 평가 자체가 skip → 손실 확대</td><td>게이트를 <b>진입/청산 분화</b> — 보유 포지션의 SELL 평가는 readiness 우회(또는 STALE 한정 진행). fail-closed는 "신규 자본 투입 차단"에만</td></tr>
+        <tr><td><span class="badge bad">P2</span></td><td><b>DISABLED 전략 포지션 방치</b> (§4-7)</td><td>전략 A로 매수 → A가 auto-disable → 손절가 도달 → 전략 조회에 안 잡혀 청산 신호 미발행</td><td>전략 상태와 무관하게 <b>position 보유 종목은 무조건 청산 평가 대상</b>(BUY만 상태 게이트) 또는 DISABLED를 SELL-only로 포함</td></tr>
+        <tr><td><span class="badge warn">P3</span></td><td>HOLDING owner 부재 (§4-3)</td><td>watchlist에서 뺀 보유 종목이 slot 경합에서 evict → tick 끊김 → 1m 캔들 미생성 → 평가 불가</td><td>owner enum에 <code>HOLDING</code>(최우선·evict 금지) 추가 + 체결 시 자동 등록/전량 청산 시 해제</td></tr>
+        <tr><td><span class="badge warn">P4</span></td><td>NXT 시간대 손절 차단 (§4-6)</td><td>15:30 이후 NXT에서 급락 → gate가 SELL 평가도 차단 → 다음날 갭으로 손실</td><td>gate를 BUY 한정으로 분리 (<code>market-hours-gate-for-sell=false</code>) — 단 NXT 유동성 고려해 사용자 결정 필요</td></tr>
+        <tr><td><span class="badge info">P5</span></td><td>폴링 fallback 1d 한정 (§4-4)</td><td>WS 장애 + evict 동시 발생 시 1m 재료 공백</td><td>보유 종목 한정 1m 폴링 경로 추가 (HOLDING owner와 함께 설계)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§6. 권고 로드맵 (통합 사이클 제안)</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>단계</th><th>내용</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td><b>ADR 1건</b></td><td>"주문 집행 정책 + 포지션 청산 보장" — §3 룰(marketable limit·스프레드 게이트·추격 금지) + §5 P1~P4 결정을 한 ADR로 (자본 경로 — 사용자 결재)</td><td>P1·P2는 룰 변경과 무관하게 선행 가능한 안전 결함</td></tr>
+        <tr><td>R1</td><td>도메인: EntryPricePolicy 순수 계산기(슬리피지·스프레드 판정 — live/백테스트 공유, ScaleInExitCalculator 선례) + RiskPlan 설정 3종 추가</td><td>strategy-engine</td></tr>
+        <tr><td>R2</td><td>P1·P2 게이트 분화 + HOLDING owner + intent에 priceType/limitPrice 발행(호가 조회→marketable limit) + 미체결 타임아웃 취소 워커</td><td>backend-core + market-data</td></tr>
+        <tr><td>R3</td><td>백테스트 슬리피지 모델 정합 + 시나리오 리플레이 검증(진입 스킵·타임아웃 취소·DISABLED 청산) + qa</td><td>검증 일괄</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§7. 직전 평가 대비 diff</h2>
+  <div class="card span-12">
+    <p><span class="badge info">첫 발행</span> 본 slug 최초 평가. 차기 추적 지표: ① P1~P5 해소 여부 ② 진입 체결률/스킵률 (룰 적용 후) ③ 평균 진입 슬리피지 ④ 손절 신호→체결 지연 시간.</p>
+  </div>
+
+  <footer>
+    evidence: 코드 전수 인용 (RealtimeSignalGenerator·BoundaryClosingKafkaListener·RealtimeSubscriptionRouter·ConsumerStrategyJpaRepository·OrderRouterKafkaListener·KisOrderHttpAdapter 외 — 본문 파일:라인) + KIS open-trading-api 공식 스펙(order_resv CTSC0008U 원문) · 관련: ADR 0067·0068·0105·0111 · 작성: orchestrator (조사: Explore very-thorough)
+  </footer>
+</main>
+</body>
+</html>

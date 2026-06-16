@@ -1,0 +1,79 @@
+# magicJar Prometheus scrape config — ADR 0094 P0-OPS-2
+#
+# 3 모듈 (api·batch·consumer) /actuator/prometheus 15s scrape.
+# docker compose 통합 기동 시 service name(api-app·batch-app·consumer-app)로 발견.
+# IDE bootRun 기동 시 host.docker.internal 로 호스트 :8080·:8081·:8082 발견.
+#
+# 두 매트릭스 동시 등록 — docker / bootRun 어느 쪽이든 데이터 수집.
+# 비활성 타깃은 자연스럽게 DOWN 표시 (에러 0).
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: magicjar
+    environment: dev
+
+scrape_configs:
+  # ─────────── magicJar 3 모듈 (docker compose 통합 기동) ───────────
+  - job_name: magicjar-api-docker
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["api-app:8080"]
+        labels:
+          application: magicjar-api
+          mode: docker
+
+  - job_name: magicjar-batch-docker
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["batch-app:8081"]
+        labels:
+          application: magicjar-batch
+          mode: docker
+
+  - job_name: magicjar-consumer-docker
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["consumer-app:8082"]
+        labels:
+          application: magicjar-consumer
+          mode: docker
+
+  # ─────────── magicJar 3 모듈 (IDE bootRun — 호스트 :8080·:8081·:8082) ───────────
+  - job_name: magicjar-api-bootrun
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          application: magicjar-api
+          mode: bootrun
+
+  - job_name: magicjar-batch-bootrun
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+        labels:
+          application: magicjar-batch
+          mode: bootrun
+
+  - job_name: magicjar-consumer-bootrun
+    metrics_path: /actuator/prometheus
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["host.docker.internal:8082"]
+        labels:
+          application: magicjar-consumer
+          mode: bootrun
+
+  # ─────────── Prometheus self-scrape ───────────
+  - job_name: prometheus-self
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar AI 프리셋 추천 — 기능 가이드 + 설계 유형 기록</title>
+  <style>
+    :root {
+      --bg: #f6f8fb; --panel: #ffffff; --ink: #172033; --muted: #667085;
+      --line: #d9e1ec; --ok: #15803d; --warn: #b45309; --bad: #b42318; --blue: #0b66c3; --violet: #6d28d9;
+      --soft-ok: #eaf7ee; --soft-warn: #fff4df; --soft-bad: #fff0ef; --soft-blue: #eaf3ff; --soft-violet: #f3eafe;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1080px; margin: 0 auto; padding: 34px 24px 54px; }
+    header { display: grid; gap: 12px; padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(135deg, #ffffff 0%, #f5f0ff 100%); }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 28px; line-height: 1.25; }
+    h2 { margin-top: 34px; font-size: 21px; }
+    h3 { font-size: 16px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; font-size: 13px; }
+    .muted { color: var(--muted); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-top: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    .badge.violet { color: var(--violet); background: var(--soft-violet); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    pre { margin: 12px 0 0; padding: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #0f172a; color: #dbe7ff; font-size: 13px; line-height: 1.6; }
+    .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 14px; }
+    .step { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #fff; position: relative; min-height: 96px; }
+    .step:not(:last-child)::after { content: ">"; position: absolute; right: -11px; top: 42%; color: var(--muted); font-weight: 800; }
+    .step b { display: block; margin-bottom: 6px; font-size: 13px; }
+    .step span { font-size: 12px; color: var(--muted); }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    a { color: var(--blue); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><span class="badge violet">FEATURE GUIDE</span> <span class="badge info">설계 유형: Live-Context Meta-Prompt</span> <span class="badge ok">AI 결정권 0</span></div>
+    <h1>AI 프리셋 추천 — 기능 가이드 + 설계 유형 기록</h1>
+    <p class="muted">발행 2026-06-07 · PR #777(백엔드)·#778(UI) · 관련: ADR 0112(Claude CLI bridge) · V70(프리셋 테이블) · V71(Core Wrapper DB 영속)</p>
+    <p><b>한 줄 요약</b> — "AI 프리셋 추천" 버튼은 <b>살아있는 시스템 상태</b>(Core Wrapper·기존 프리셋·실제 보유 지표)를 메타 프롬프트로 조립해 Claude에게 보내고, <b>magicJar 구조로 검증 가능한</b> 발굴 프리셋 후보를 받아온다. AI는 추천만 하고 <b>저장은 사용자가 고른 것만</b> 된다.</p>
+  </header>
+
+  <h2>1. 사용 방법</h2>
+  <div class="flow">
+    <div class="step"><b>① 버튼</b><span>전략 리서치 → AI 종목발굴 → "AI 프리셋 추천" (violet)</span></div>
+    <div class="step"><b>② 방향 입력 (선택)</b><span>"수급 기반 단타" 등 — 비워두면 기존 프리셋과 차별화된 컨셉 자동 제안</span></div>
+    <div class="step"><b>③ 추천받기</b><span>Claude CLI 호출 — 수 분 소요 (진행률 바)</span></div>
+    <div class="step"><b>④ 카드 검토</b><span>label·설명·지시문(접기)·<b>rationale</b>(왜 우리 구조에 맞는지)</span></div>
+    <div class="step"><b>⑤ 추가</b><span>마음에 드는 것만 "프리셋으로 추가" → 발굴 드롭다운 즉시 노출</span></div>
+  </div>
+
+  <h2>2. 설계 유형 — 왜 이 기능이 "Live-Context Meta-Prompt" 인가</h2>
+  <div class="card">
+    <p>이 기능의 본체는 UI가 아니라 <b>메타 프롬프트 빌더</b>(<code>StrategyResearchAiDiscoveryService.buildPresetRecommendPrompt()</code>)다. 정적 템플릿이 아니라 <b>호출 시점의 시스템 상태를 런타임 조립</b>한다:</p>
+    <table>
+      <thead><tr><th>섹션</th><th>데이터 출처 (권위)</th><th>살아있는 이유</th></tr></thead>
+      <tbody>
+        <tr><td>[core wrapper]</td><td><code>corePromptText()</code> — <b>DB 권위</b> (V71, 사용자 편집본)</td><td>사용자가 Core Wrapper를 개선하면 추천 기준도 즉시 따라감</td></tr>
+        <tr><td>[이미 등록된 프리셋]</td><td>프리셋 테이블 전체 (V70 + 사용자 생성분)</td><td>중복 컨셉 금지 — 프리셋이 쌓일수록 빈 전략 영역을 채우는 추천으로 이동</td></tr>
+        <tr><td>[magicJar 시스템 능력]</td><td><b><code>IndicatorCatalog</code> 직접 read</b> (도메인 권위) — 카테고리별 지표 + 13 interval + 발굴→스크리너→백테스트 흐름</td><td>지표를 추가/삭제하면 프롬프트가 자동 정합 — "보유하지 않은 데이터에 의존하는 프리셋 금지" 제약이 항상 실제와 일치</td></tr>
+        <tr><td>[사용자 힌트]</td><td>요청 body <code>hint</code> (옵션)</td><td>사용자 의도 최우선, 단 검증 가능성 제약 유지</td></tr>
+        <tr><td>[출력 계약]</td><td>JSON only — label≤20자·description '~를 찾습니다' 톤·promptText 2~4문장 명령형·rationale 1문장</td><td>기존 builtin 3종과 동일한 스타일로 수렴</td></tr>
+      </tbody>
+    </table>
+    <p><span class="badge ok">선순환</span> 사용 → Core Wrapper/프리셋/지표 개선 → 추천 품질 상승. <b>개선 레버는 코드가 아니라 ① Core Wrapper 텍스트 ② 메타 프롬프트의 [작업]·[출력 계약] 섹션 ③ IndicatorCatalog 확장</b> 3곳이다.</p>
+  </div>
+
+  <h2>3. 안전 원칙 (불변 — 향후 개선 시에도 유지)</h2>
+  <div class="card">
+    <ul>
+      <li><b>AI 결정권 0</b> — 추천은 저장되지 않는다. 사용자가 "프리셋으로 추가"를 누른 것만 프리셋이 된다 (ADR 0112 정합: 주문·전략 저장·watchlist 자동 등록 0).</li>
+      <li><b>프리셋 ≠ 매수 추천</b> — Screener+Backtest 검증을 거쳐야 하는 '가설 후보' 템플릿. 메타 프롬프트가 이 제약을 명시적으로 강제.</li>
+      <li><b>mock 합성 0</b> — AI 실패/타임아웃은 에러 그대로 표출, 재시도 가능.</li>
+      <li><b>검증 가능성 게이트</b> — 보유 지표·interval로 검증 불가능한 프리셋(예: 외국인 수급 실시간 데이터 의존)은 추천 금지 지시.</li>
+    </ul>
+  </div>
+
+  <h2>4. API · 구현 위치</h2>
+  <div class="card">
+    <pre>POST /api/strategy-research/ai-discovery/presets/recommend
+요청  { userId, hint?: string|null, count?: number(1~5, 기본 3) }
+응답  { provider, generatedAt, warnings[], items: [{ label, description, promptText, rationale }] }
+저장  기존 POST /api/strategy-research/ai-discovery/presets (createPreset) 재사용</pre>
+    <table>
+      <thead><tr><th>계층</th><th>위치</th></tr></thead>
+      <tbody>
+        <tr><td>메타 프롬프트 빌더 (본체)</td><td><code>api/.../strategyresearch/StrategyResearchAiDiscoveryService.kt</code> — <code>recommendPresets()</code>·<code>buildPresetRecommendPrompt()</code>·<code>systemCapabilitySummary()</code></td></tr>
+        <tr><td>엔드포인트</td><td><code>StrategyResearchController.kt</code> (Swagger 4단)</td></tr>
+        <tr><td>UI (모달·카드·추가)</td><td><code>frontend/src/pages/Strategy/StrategyResearchPage.tsx</code> + <code>frontend/src/api/strategyResearch.ts</code></td></tr>
+        <tr><td>프롬프트 카탈로그</td><td><code>_workspace/ai/prompt-catalog.md</code> §2-6 · <code>_workspace/ai/output-schemas/preset-recommend.schema.json</code> · 샘플 <code>_workspace/ai/sample-outputs/2026-06-06-preset-recommend.md</code></td></tr>
+        <tr><td>AI 호출</td><td><code>StrategyResearchAiTextClient</code> — Claude CLI 직접 또는 local bridge (ADR 0112), timeout 310s</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>5. 향후 개선 백로그 (아이디어 기록)</h2>
+  <div class="card">
+    <ul>
+      <li><span class="badge info">품질</span> 추천 프리셋의 <b>사후 성과 피드백 루프</b> — 추가된 프리셋이 만든 후보의 스크리너 매칭률/백테스트 성과를 메타 프롬프트에 주입 ("성과 좋았던 프리셋 유형: …")</li>
+      <li><span class="badge info">품질</span> 시장 컨텍스트 주입 — market_index_snapshot 추세 요약을 [작업] 섹션에 추가 (현재 장세에 맞는 프리셋)</li>
+      <li><span class="badge warn">UX</span> 추천 결과에서 promptText 인라인 편집 후 추가 (현재는 추가 후 프리셋 설정에서 수정)</li>
+      <li><span class="badge warn">UX</span> 추천 이력 보관 (현재 팝업 닫으면 소실 — discovery state 패턴 재사용 후보)</li>
+      <li><span class="badge ok">동일 유형 재사용</span> 이 Live-Context Meta-Prompt 패턴은 <b>전략 DSL 추천·리스크 플랜 추천</b>에도 동일 구조로 이식 가능 (카탈로그 read + 기존 자산 중복 회피 + 사용자 선택 저장)</li>
+    </ul>
+  </div>
+
+  <footer>
+    작성: orchestrator · evidence: PR #777·#778 머지 + 배포 검증(400 게이트·AI 호출 진입 실증) · 짝 문서: ADR 0112 · <code>_workspace/ai/prompt-catalog.md</code> §2-6
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+-- Drop the unused duplicate candle lookup index.
+-- =============================================================================
+-- V69: candle 중복 인덱스 정리 (1/2) — scan 0회 사장 인덱스 drop
+--
+-- Keep:
+-- - uq_candle_code_interval_ts: uniqueness and ON CONFLICT target
+-- - idx_candle_code_interval_ts_v8: active DESC lookup index for latest candle reads
+-- 배경 (2026-06-06 DB 전수 감사 — docs/assessments/2026-06-06-db-usage-contention-audit.html):
+--   candle 인덱스 4개 중 3개가 (code, interval, ts) 동일 컬럼 조합.
+--     uq_candle_code_interval_ts      (code, interval, ts)      167MB — 23.2M scans (주력, ON CONFLICT 본체)
+--     idx_candle_code_interval_ts     (code, interval, ts DESC) 167MB — 0 scans  ← 본 마이그레이션 drop
+--     idx_candle_code_interval_ts_v8  (code, interval, ts DESC) 167MB — 정의 동일 중복 (ADR 0113 관찰 후 후속 결정)
+--   V1에서 UNIQUE 제약(자동 인덱스)과 DESC 인덱스를 동시 생성 → 출생 시점부터 중복.
+--   btree는 양방향 스캔이 가능해 UNIQUE 인덱스가 ORDER BY ts DESC 조회를 커버한다.
+--
+-- 효과: 디스크 ~167MB 회수 + candle insert/update 인덱스 유지 비용 4→3.
+-- 리스크: 0 — 동일 컬럼 인덱스 2개(uq, v8) 잔존. 롤백 = V1 정의 재생성 1줄.
+-- 참조: ADR 0113 (candle retention 계층화 케이스 — Proposed)
+-- =============================================================================
+
+DROP INDEX IF EXISTS idx_candle_code_interval_ts;

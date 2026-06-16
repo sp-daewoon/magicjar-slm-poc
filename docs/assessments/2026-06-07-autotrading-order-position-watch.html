@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>자동매매 주문 정책 및 포지션 긴급 감시 점검 - 2026-06-07</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d8e0eb;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --violet: #6d28d9;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+      --soft-violet: #f3edff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.58 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 56px; }
+    header {
+      display: grid;
+      gap: 13px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #eef6ff 100%);
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 29px; line-height: 1.22; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #eef2f7;
+      color: #25324a;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .92em;
+    }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-12 { grid-column: span 12; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    .badge.violet { color: var(--violet); background: var(--soft-violet); }
+    .metric {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .metric strong { font-size: 34px; line-height: 1; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    ul, ol { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    .callout {
+      margin-top: 16px;
+      padding: 15px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+    .callout.ok { background: var(--soft-ok); border-color: #b7e2c1; }
+    .callout.warn { background: var(--soft-warn); border-color: #f1d19b; }
+    .callout.bad { background: var(--soft-bad); border-color: #f3b8b1; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(135px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .step {
+      min-height: 116px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 42%;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .step b { display: block; margin-bottom: 6px; }
+    .step small { color: var(--muted); }
+    .decision {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .decision .yes { border-color: #b7e2c1; background: #fbfffc; }
+    .decision .no { border-color: #f1d19b; background: #fffdf7; }
+    .rank {
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      width: 26px;
+      height: 26px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--soft-blue);
+      color: var(--blue);
+      font-weight: 800;
+    }
+    @media (max-width: 900px) {
+      .span-4, .span-5, .span-6, .span-7 { grid-column: span 12; }
+      .flow { grid-template-columns: repeat(6, 170px); }
+      .decision { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge warn">현재 판단: 진입 가격 보호 필요</span>
+      <span class="badge bad">포지션 틱 감시 미흡</span>
+      <span class="badge info">작성: 2026-06-07 KST</span>
+    </div>
+    <h1>자동매매 주문 정책 및 포지션 긴급 감시 점검</h1>
+    <p class="muted">
+      3% 언더의 빈번한 매매 전략을 기준으로, 현재 자동주문 구조와 보유 포지션 감시 구조를 점검하고
+      권장 주문 정책과 개선 우선순위를 정리한다.
+    </p>
+  </header>
+
+  <h2>요약 결론</h2>
+  <section class="grid">
+    <article class="card span-4">
+      <h3>진입 주문</h3>
+      <div class="metric"><strong>LIMIT</strong><span class="muted">시장가 고정 해제</span></div>
+      <p>자동 BUY는 시장가가 아니라 <strong>허용 슬리피지 안의 공격적 지정가</strong>가 적합하다.</p>
+    </article>
+    <article class="card span-4">
+      <h3>손절 주문</h3>
+      <div class="metric"><strong>MARKET</strong><span class="muted">체결 확실성 우선</span></div>
+      <p>손절은 가격보다 탈출이 우선이다. 지정가 손절은 미체결 위험이 크다.</p>
+    </article>
+    <article class="card span-4">
+      <h3>보유 중 감시</h3>
+      <div class="metric"><strong>TICK</strong><span class="muted">캔들 마감 대기 금지</span></div>
+      <p>포지션 보유 중 손절/익절은 분봉 마감이 아니라 KIS WS tick 기준으로 평가해야 한다.</p>
+    </article>
+  </section>
+
+  <div class="callout warn">
+    <strong>핵심 판단:</strong>
+    지금 백엔드 실시간 수집과 캔들 기반 신호 평가는 존재하지만, "포지션을 보유했으니 해당 종목을 최우선으로 붙잡고
+    매 tick마다 청산 조건을 보는 긴급 감시 모드"는 아직 부족하다.
+  </div>
+
+  <h2>권장 주문 정책</h2>
+  <table>
+    <tr>
+      <th>주문</th>
+      <th>권장 정책</th>
+      <th>기본값</th>
+      <th>근거</th>
+    </tr>
+    <tr>
+      <td><strong>진입 BUY</strong></td>
+      <td>지정가. 단, 소극적 지정가가 아니라 <strong>marketable limit</strong>: 현재 매도1호가가 허용 상한 안이면 지정가로 진입</td>
+      <td>허용 슬리피지 0.2~0.3%, 미체결 10~30초 후 취소</td>
+      <td>시장가 진입은 급등 순간 불리한 체결이 발생하고, 짧은 수익폭 전략의 기대값을 훼손한다.</td>
+    </tr>
+    <tr>
+      <td><strong>진입 실패</strong></td>
+      <td>기본은 취소 후 스킵. 시장가 전환은 옵션이며 기본 OFF</td>
+      <td>재호가 0~1회, 시장가 전환 OFF</td>
+      <td>3% 언더 전략에서는 못 사는 리스크보다 나쁜 가격에 사는 리스크가 더 크다.</td>
+    </tr>
+    <tr>
+      <td><strong>스탑로스 SELL</strong></td>
+      <td>시장가 유지. tick 기준 손절선 터치 시 즉시 청산 주문</td>
+      <td>시장가, 중복 SELL 예약 수량 차감</td>
+      <td>손절은 체결 확실성이 가격보다 우선이다.</td>
+    </tr>
+    <tr>
+      <td><strong>익절 SELL</strong></td>
+      <td>지정가 또는 공격적 지정가. 미체결 시 재호가 또는 다음 tick 재평가</td>
+      <td>목표가 지정가, 짧은 timeout 후 재호가</td>
+      <td>익절은 손절보다 시간 압박이 낮아 가격 보호 여지가 있다.</td>
+    </tr>
+    <tr>
+      <td><strong>KIS 스탑지정가</strong></td>
+      <td>보조 안전장치로만 검토</td>
+      <td>기본 OFF</td>
+      <td>KIS의 스탑지정가는 stop-market이 아니라 stop-limit 성격이므로 급락 시 체결 보장이 약하다.</td>
+    </tr>
+  </table>
+
+  <h2>BUY 지정가 산정 예시</h2>
+  <section class="grid">
+    <article class="card span-7">
+      <h3>권장 계산식</h3>
+      <p>
+        <code>maxEntryPrice = signalPrice * (1 + maxEntrySlippagePct / 100)</code>
+      </p>
+      <p>
+        <code>ask1 <= maxEntryPrice</code>이면 호가단위 보정 후 <code>ask1</code> 또는 <code>ask1 + 1tick</code> 지정가 주문.
+        <code>ask1 > maxEntryPrice</code>이면 진입 스킵.
+      </p>
+      <div class="decision">
+        <div class="card yes">
+          <h3>체결 시도</h3>
+          <p>신호가 100,000원, 허용 0.25%, 매도1호가 100,100원이라면 지정가 100,100~100,200원으로 진입한다.</p>
+        </div>
+        <div class="card no">
+          <h3>진입 스킵</h3>
+          <p>신호가 100,000원, 허용 0.25%, 매도1호가 100,500원이라면 너무 비싸므로 매수하지 않는다.</p>
+        </div>
+      </div>
+    </article>
+    <article class="card span-5">
+      <h3>필요한 입력 데이터</h3>
+      <ul>
+        <li>시그널 기준가: 현재 구조의 <code>priceAtSignal</code></li>
+        <li>현재 호가: KIS <code>H0STASP0</code> 또는 REST/캐시 보조</li>
+        <li>호가단위 보정 함수</li>
+        <li>미체결 취소 timeout</li>
+        <li>부분체결 처리 정책</li>
+      </ul>
+    </article>
+  </section>
+
+  <h2>현재 백엔드 흐름</h2>
+  <div class="flow">
+    <div class="step">
+      <b>KIS WS tick</b>
+      <small><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/ws/KisWebSocketBridge.kt">KisWebSocketBridge</a>가 체결가 수신</small>
+    </div>
+    <div class="step">
+      <b>Redis + Kafka</b>
+      <small>현재가 cache 갱신, <code>market.tick.v1</code> 발행</small>
+    </div>
+    <div class="step">
+      <b>1분봉 집계</b>
+      <small><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/market/TickToMinuteAggregator.kt">TickToMinuteAggregator</a>가 매분 closing</small>
+    </div>
+    <div class="step">
+      <b>캔들 마감 이벤트</b>
+      <small><code>market.candle.*.closed.v1</code> 발행</small>
+    </div>
+    <div class="step">
+      <b>전략 평가</b>
+      <small><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/signal/RealtimeSignalGenerator.kt">RealtimeSignalGenerator</a>가 마감가 기준 평가</small>
+    </div>
+    <div class="step">
+      <b>주문 의도</b>
+      <small>현재 자동 경로는 <code>MARKET</code> 고정</small>
+    </div>
+  </div>
+
+  <h2>현재 구조에서 확인된 사실</h2>
+  <table>
+    <tr>
+      <th>항목</th>
+      <th>현재 상태</th>
+      <th>판단</th>
+      <th>근거 파일</th>
+    </tr>
+    <tr>
+      <td>자동 주문 가격 유형</td>
+      <td><code>priceType = MARKET</code>, <code>limitPrice = null</code> 고정</td>
+      <td><span class="badge bad">개선 필요</span></td>
+      <td><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/risk/OrderIntentKafkaProducer.kt">OrderIntentKafkaProducer.kt</a></td>
+    </tr>
+    <tr>
+      <td>KIS 지정가 지원</td>
+      <td>도메인/KIS 어댑터는 <code>MARKET</code>, <code>LIMIT</code> 모두 매핑 가능</td>
+      <td><span class="badge ok">기반 있음</span></td>
+      <td><a href="../../domain/src/main/kotlin/kr/spdaewoon/magicjar/domain/order/execution/OrderPriceType.kt">OrderPriceType.kt</a>, <a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/order/KisOrderHttpAdapter.kt">KisOrderHttpAdapter.kt</a></td>
+    </tr>
+    <tr>
+      <td>손절/익절 평가</td>
+      <td>주로 캔들 boundary에서 <code>closeRaw</code> 기준으로 평가</td>
+      <td><span class="badge warn">긴급 감시로는 약함</span></td>
+      <td><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/signal/RealtimeSignalGenerator.kt">RealtimeSignalGenerator.kt</a></td>
+    </tr>
+    <tr>
+      <td>tick 소비</td>
+      <td><code>market.tick.v1</code>는 API에서 STOMP 화면 전달용으로 소비</td>
+      <td><span class="badge warn">청산 워처 없음</span></td>
+      <td><a href="../../api/src/main/kotlin/kr/spdaewoon/magicjar/api/messaging/MarketTickStompForwarder.kt">MarketTickStompForwarder.kt</a></td>
+    </tr>
+    <tr>
+      <td>체결 후 포지션 반영</td>
+      <td>체결 row 저장과 <code>position</code>, <code>strategy_position</code> 갱신이 연결됨</td>
+      <td><span class="badge ok">구조 있음</span></td>
+      <td><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/order/ExecutionPersistenceService.kt">ExecutionPersistenceService.kt</a></td>
+    </tr>
+    <tr>
+      <td>포지션 보유 중 구독 유지</td>
+      <td>실시간 수요 owner는 <code>DETAIL</code>, <code>STRATEGY</code>만 존재</td>
+      <td><span class="badge bad">POSITION owner 필요</span></td>
+      <td><a href="../../consumer/src/main/kotlin/kr/spdaewoon/magicjar/consumer/ingestion/RealtimeSubscriptionRouter.kt">RealtimeSubscriptionRouter.kt</a></td>
+    </tr>
+  </table>
+
+  <h2>목표 구조</h2>
+  <div class="flow">
+    <div class="step">
+      <b>BUY 체결</b>
+      <small>체결통보 수신 후 position/strategy_position 갱신</small>
+    </div>
+    <div class="step">
+      <b>POSITION owner 등록</b>
+      <small>해당 종목을 최우선 WS 구독으로 유지</small>
+    </div>
+    <div class="step">
+      <b>tick watcher</b>
+      <small><code>market.tick.v1</code>를 백엔드에서 직접 소비</small>
+    </div>
+    <div class="step">
+      <b>청산 조건 평가</b>
+      <small>손절/익절/부분익절을 tick 가격 기준으로 즉시 판단</small>
+    </div>
+    <div class="step">
+      <b>SELL 주문</b>
+      <small>손절은 시장가, 익절은 지정가 또는 공격적 지정가</small>
+    </div>
+    <div class="step">
+      <b>전량 청산</b>
+      <small>POSITION owner 해제, 잔여 주문 정리</small>
+    </div>
+  </div>
+
+  <h2>개선 우선순위</h2>
+  <section class="grid">
+    <article class="card span-6">
+      <h3><span class="rank">1</span>자동 BUY 지정가 전환</h3>
+      <p>자동 주문 생성부의 <code>MARKET</code> 고정을 해제하고, 전략/리스크 설정에 따라 <code>LIMIT</code>와 <code>limitPrice</code>를 계산한다.</p>
+      <ul>
+        <li><code>maxEntrySlippagePct</code> 추가</li>
+        <li>호가단위 보정</li>
+        <li>미체결 취소 timeout</li>
+        <li>시장가 전환 옵션은 기본 OFF</li>
+      </ul>
+    </article>
+    <article class="card span-6">
+      <h3><span class="rank">2</span>POSITION 실시간 구독 owner</h3>
+      <p>BUY 체결 후 포지션이 생기면 해당 종목을 사용자 화면이나 스크리너 TTL과 무관하게 계속 구독한다.</p>
+      <ul>
+        <li><code>RealtimeDemandOwner.POSITION</code> 추가</li>
+        <li>watchlist보다 높은 우선순위 부여</li>
+        <li>전량 SELL 체결 시 release</li>
+      </ul>
+    </article>
+    <article class="card span-6">
+      <h3><span class="rank">3</span>TickPositionRiskWatcher</h3>
+      <p>consumer가 <code>market.tick.v1</code>를 직접 소비해 보유 포지션의 청산 조건을 tick마다 평가한다.</p>
+      <ul>
+        <li>손절 터치 시 시장가 SELL</li>
+        <li>익절 도달 시 지정가 SELL</li>
+        <li>중복 SELL 방지 idempotency</li>
+        <li>open SELL 예약 수량 차감</li>
+      </ul>
+    </article>
+    <article class="card span-6">
+      <h3><span class="rank">4</span>호가 기반 진입 품질 게이트</h3>
+      <p>스프레드와 호가 잔량이 나쁜 종목은 진입하지 않는다. 짧은 수익폭 전략의 핵심 방어선이다.</p>
+      <ul>
+        <li><code>maxSpreadPct</code> 설정</li>
+        <li>최우선 매도호가 잔량 확인</li>
+        <li>호가 구독 slot 부족 시 REST/캐시 fallback 정책</li>
+      </ul>
+    </article>
+  </section>
+
+  <h2>권장 기본 파라미터</h2>
+  <table>
+    <tr><th>설정</th><th>권장값</th><th>설명</th></tr>
+    <tr><td><code>entryPriceType</code></td><td><code>LIMIT</code></td><td>자동 BUY는 가격 보호 지정가로 시작한다.</td></tr>
+    <tr><td><code>maxEntrySlippagePct</code></td><td>0.2~0.3%</td><td>시그널 가격 대비 허용 가능한 최대 불리한 진입 가격.</td></tr>
+    <tr><td><code>entryTimeoutSec</code></td><td>10~30초</td><td>지정가 미체결 시 취소한다.</td></tr>
+    <tr><td><code>entryMarketFallback</code></td><td>false</td><td>취소 후 시장가 전환은 기본 OFF.</td></tr>
+    <tr><td><code>stopLossPriceType</code></td><td><code>MARKET</code></td><td>손절은 체결 확실성을 우선한다.</td></tr>
+    <tr><td><code>takeProfitPriceType</code></td><td><code>LIMIT</code></td><td>익절은 가격 보호 여지가 있다.</td></tr>
+    <tr><td><code>maxSpreadPct</code></td><td>0.3% 이하</td><td>스프레드가 넓으면 진입하지 않는다.</td></tr>
+  </table>
+
+  <h2>최종 판단</h2>
+  <div class="callout bad">
+    <strong>지금 상태 그대로 REAL 빈번매매를 돌리기에는 진입 가격과 포지션 감시가 부족하다.</strong>
+    시장가 BUY 고정은 슬리피지 리스크가 크고, 보유 포지션의 손절/익절이 tick마다 즉시 평가되는 구조가 아니다.
+  </div>
+  <div class="callout ok">
+    <strong>개선 방향은 명확하다.</strong>
+    먼저 자동 BUY를 지정가로 바꾸고, 이어서 POSITION owner와 tick 기반 청산 워처를 추가하면
+    3% 언더 전략에 필요한 가격 보호와 긴급 탈출 구조를 갖출 수 있다.
+  </div>
+</main>
+</body>
+</html>

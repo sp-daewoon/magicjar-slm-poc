@@ -1,0 +1,5 @@
+package kr.spdaewoon.magicjar.api.persistence.strategyresearch
+
+import org.springframework.data.jpa.repository.JpaRepository
+
+interface StrategyResearchAiDiscoveryCorePromptJpaRepository : JpaRepository<StrategyResearchAiDiscoveryCorePromptJpaEntity, Short>

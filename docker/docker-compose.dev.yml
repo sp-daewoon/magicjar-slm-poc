@@ -1,0 +1,39 @@
+# magicJar 개발 모드 override (volume mount + 핫 리로드)
+# 사용:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d
+#
+# - JVM 앱: build/libs를 mount 해 ./gradlew bootJar 후 컨테이너 재시작 없이 갱신
+#   (완전한 핫 리로드는 IDE bootRun + infra 모드를 권장)
+# - frontend: src/ mount는 vite dev server를 별도 컨테이너로 띄우는 형태가 권장이나,
+#   compose 일관성을 위해 volume mount만 표기 (실제 핫 리로드는 host의 `pnpm dev`로 권장)
+
+name: magicjar
+
+services:
+  api-app:
+    volumes:
+      - ../api/build/libs:/app/libs:ro
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,real-kis
+      LOGGING_LEVEL_COM_MJ: INFO
+      MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_BRIDGE_URL: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_BRIDGE_URL:-http://host.docker.internal:8787}
+      MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_TIMEOUT_SECONDS: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_TIMEOUT_SECONDS:-300}
+
+  batch-app:
+    volumes:
+      - ../batch/build/libs:/app/libs:ro
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,real-kis
+      LOGGING_LEVEL_COM_MJ: INFO
+
+  consumer-app:
+    volumes:
+      - ../consumer/build/libs:/app/libs:ro
+    environment:
+      SPRING_PROFILES_ACTIVE: dev,real-kis
+      LOGGING_LEVEL_COM_MJ: INFO
+
+  frontend:
+    volumes:
+      - ../frontend/src:/usr/share/nginx/html-src:ro
+    # 실제 핫 리로드는 호스트의 `pnpm -C frontend dev`(포트 5173) 사용 권장

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 자동매매 현재 코드 점검 보고서 - 2026-06-04</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 54px; }
+    header {
+      display: grid;
+      gap: 14px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .score {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .score strong { font-size: 40px; line-height: 1; }
+    .bar {
+      height: 10px;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8edf4;
+    }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .okbar { background: var(--ok); }
+    .warnbar { background: var(--warn); }
+    .badbar { background: var(--bad); }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(112px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .step {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 42%;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .step b { display: block; margin-bottom: 6px; }
+    .step small { color: var(--muted); }
+    .callout {
+      margin-top: 16px;
+      padding: 15px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+    .callout.ok { background: var(--soft-ok); border-color: #b7e2c1; }
+    .callout.warn { background: var(--soft-warn); border-color: #f1d19b; }
+    .callout.bad { background: var(--soft-bad); border-color: #f3b8b1; }
+    .small { font-size: 13px; }
+    @media (max-width: 900px) {
+      .span-4, .span-6, .span-8 { grid-column: span 12; }
+      .flow { grid-template-columns: repeat(7, 160px); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge warn">현재 판단: 조건부 정상</span>
+      <span class="badge info">대상 커밋: main c03d40a1</span>
+      <span class="badge info">작성: 2026-06-04 17:50 KST</span>
+    </div>
+    <h1>자동매매 현재 코드 점검 보고서</h1>
+    <p class="muted">
+      최근 #715~#722 변경 후, 현재 코드 기준으로 자동매매가 정상적으로 이루어질 수 있는지와
+      남은 완성도를 코드·테스트·DB·로그 evidence로 점검했다.
+    </p>
+  </header>
+
+  <section class="grid">
+    <article class="card span-4">
+      <h3>종합 자동매매 준비도</h3>
+      <div class="score"><strong>71%</strong><span class="muted">/ 100</span></div>
+      <div class="bar"><span class="warnbar" style="width:71%"></span></div>
+      <p class="small muted">
+        모의 자동매매 흐름은 작동하지만, 실전 무인 운용에는 Rate Limit·백필·관측성 보강이 더 필요하다.
+      </p>
+    </article>
+    <article class="card span-4">
+      <h3>MOCK 기능 구현도</h3>
+      <div class="score"><strong>82%</strong><span class="muted">/ 100</span></div>
+      <div class="bar"><span class="okbar" style="width:82%"></span></div>
+      <p class="small muted">
+        최근 24시간 MOCK AUTO 주문에 FILLED/REJECTED/EXPIRED가 실제 기록되어 E2E 흐름은 살아 있다.
+      </p>
+    </article>
+    <article class="card span-4">
+      <h3>REAL 안전 운영 준비도</h3>
+      <div class="score"><strong>64%</strong><span class="muted">/ 100</span></div>
+      <div class="bar"><span class="warnbar" style="width:64%"></span></div>
+      <p class="small muted">
+        fail-closed 게이트는 좋아졌지만, 실제 KIS rate limit과 백필 admin 경로가 아직 불안정하다.
+      </p>
+    </article>
+  </section>
+
+  <h2>한 줄 결론</h2>
+  <div class="callout warn">
+    <b>지금 코드는 자동매매 본선이 끊어진 상태는 아니다.</b>
+    시그널 생성, 리스크 차단, 주문 intent, 주문 라우터, KIS ACK/거절 처리까지 연결되어 있다.
+    다만 “실전 자동매매를 장시간 켜두고 완전히 안심할 수준”은 아직 아니다.
+    특히 admin 1분봉 백필이 KIS TPS 초과를 계속 만들 수 있고, 캔들 stale 원인 표시가 부족하다.
+  </div>
+
+  <h2>자동매매 실제 흐름</h2>
+  <div class="card">
+    <div class="flow">
+      <div class="step"><b>1. 캔들 마감</b><small>WS tick -> 1m DB INSERT -> boundary fanout</small></div>
+      <div class="step"><b>2. 전략 평가</b><small>정규장 게이트, data readiness, DSL 평가</small></div>
+      <div class="step"><b>3. Signal 저장</b><small>DB 저장 후 id가 있을 때만 Kafka publish</small></div>
+      <div class="step"><b>4. Risk 평가</b><small>손실·포지션·빈도·SELL 가능수량 검사</small></div>
+      <div class="step"><b>5. Order Intent</b><small>ALLOWED만 order.intent.v1 발행</small></div>
+      <div class="step"><b>6. 주문 라우터</b><small>idempotency, mode, kill switch, 장운영 게이트</small></div>
+      <div class="step"><b>7. KIS/DB 반영</b><small>ACK, REJECTED, PENDING_RECONCILE, 체결 백필</small></div>
+    </div>
+  </div>
+
+  <h2>현재 좋게 바뀐 점</h2>
+  <section class="grid">
+    <article class="card span-6">
+      <h3>주문 안전 게이트</h3>
+      <ul>
+        <li>정규장 밖 AUTO 주문은 KIS 전송 전 차단된다.</li>
+        <li>KillSwitch 조회 실패 또는 포트 부재는 fail-closed로 차단된다.</li>
+        <li>REAL 모드에서는 자본·포지션·일손익·오픈주문 context를 못 만들면 리스크 차단된다.</li>
+        <li>SELL 주문은 DB 포지션뿐 아니라 KIS 잔고 조회까지 한 번 더 확인한다.</li>
+        <li>KIS timeout ambiguity는 REJECTED 확정 대신 PENDING_RECONCILE로 보류한다.</li>
+      </ul>
+    </article>
+    <article class="card span-6">
+      <h3>시장 데이터 안정성</h3>
+      <ul>
+        <li>1분봉 INSERT의 TransactionRequiredException 원인은 TransactionTemplate으로 막혔다.</li>
+        <li>WS 구독 race는 watchlist 등록 후 connect 순서로 완화됐다.</li>
+        <li>일봉 5분 refresh는 incremental=true로 바뀌어 30년치 재조회 burst가 줄었다.</li>
+        <li>자동 백필 submit 경로는 동시성 1개, run 간 1.5초 간격, 갭 cap, 회복불가 마킹이 추가됐다.</li>
+      </ul>
+    </article>
+  </section>
+
+  <h2>검증 Evidence</h2>
+  <section class="grid">
+    <article class="card span-6">
+      <h3>테스트</h3>
+      <table>
+        <thead><tr><th>대상</th><th>결과</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>consumer 핵심 테스트</td>
+            <td><span class="badge ok">PASS</span></td>
+            <td>Backfill, WS reconnect, TickToMinuteAggregator, RealtimeSignalGenerator, OrderRouter 관련 targeted tests 성공</td>
+          </tr>
+          <tr>
+            <td>api 캔들/리플레이 테스트</td>
+            <td><span class="badge ok">PASS</span></td>
+            <td>CandleRefreshController, CandleRefreshServiceAscNormalize, ScenarioReplayController targeted tests 성공</td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+    <article class="card span-6">
+      <h3>운영 DB 상태</h3>
+      <table>
+        <thead><tr><th>항목</th><th>확인값</th></tr></thead>
+        <tbody>
+          <tr><td>컨테이너</td><td>api, consumer, frontend, batch, postgres, redis, kafka healthy</td></tr>
+          <tr><td>최근 24h 주문</td><td>MOCK AUTO: FILLED 11, REJECTED 8, EXPIRED 4</td></tr>
+          <tr><td>최근 24h signal</td><td>BUY ALLOWED 10, BUY BLOCKED 13, SELL ALLOWED 13, SELL BLOCKED 91</td></tr>
+          <tr><td>최근 24h risk</td><td>SELL_WITHOUT_POSITION 58, SELL_QUANTITY_UNAVAILABLE 33, POSITION_LIMIT 13</td></tr>
+          <tr><td>주요 1m 캔들</td><td>대부분 1~3분 내 최신. 004090/038110은 약 8~9분 지연</td></tr>
+        </tbody>
+      </table>
+    </article>
+  </section>
+
+  <h2>남은 위험</h2>
+  <section class="grid">
+    <article class="card span-6">
+      <h3><span class="badge bad">P0</span> Admin 1m 백필 Rate Limit</h3>
+      <p>
+        자동 submit 경로는 throttle이 들어갔지만, admin 동기 <code>runBackfill()</code> 경로는 운영자 우회로 설계되어
+        throttle을 타지 않는다. 실제 로그에서 admin 1m 백필이 연속 실행되며
+        <code>ConsumerRedisKisRateLimiterAdapter</code> TPS exceeded count가 390까지 증가했다.
+      </p>
+      <p class="small muted">
+        주문 직접 발행 문제는 아니지만, KIS 호출 안정성·캔들 보정·리플레이 신뢰도에 직접 영향을 준다.
+      </p>
+    </article>
+    <article class="card span-6">
+      <h3><span class="badge bad">P0</span> 백필 sanity monotonic 대량 경고</h3>
+      <p>
+        <code>CandleBackfillWorker sanity 실패 monotonic</code> 경고가 수만 줄 발생했다.
+        KIS 응답 정렬 방향 또는 sanity check 기준이 실제 응답과 어긋나 있을 가능성이 있다.
+      </p>
+      <p class="small muted">
+        감사 로그상 일부 backfill은 SUCCESS지만 insertedCount=0이다. 성공/미커버/정렬오류를 더 명확히 분리해야 한다.
+      </p>
+    </article>
+    <article class="card span-6">
+      <h3><span class="badge warn">P1</span> 캔들 stale 원인 가시성 부족</h3>
+      <p>
+        현재는 last candle이 늦다는 결과는 볼 수 있지만, 원인이 WS 미구독·tick 없음·DB insert 실패·KIS 백필 실패·장외 정상 상태 중 무엇인지
+        사용자 화면에서 바로 알기 어렵다.
+      </p>
+    </article>
+    <article class="card span-6">
+      <h3><span class="badge warn">P1</span> 리플레이와 라이브 차이</h3>
+      <p>
+        라이브는 정규장 게이트와 REAL risk fail-closed를 탄다. 리플레이가 같은 게이트·예산·포지션 귀속을 완전히 반영하지 않으면
+        “리플레이에서는 샀는데 라이브는 안 산다”는 의심이 계속 생긴다.
+      </p>
+    </article>
+    <article class="card span-6">
+      <h3><span class="badge warn">P1</span> 전략별 포지션 귀속</h3>
+      <p>
+        익절/청산 로직은 현재 사용자+종목 포지션을 본다. 동일 종목에 여러 전략이 있을 때 “이 전략이 산 물량인지”까지 분리하려면
+        strategy ownership 추적이 더 필요하다.
+      </p>
+    </article>
+    <article class="card span-6">
+      <h3><span class="badge warn">P1</span> REAL 장시간 canary 부족</h3>
+      <p>
+        단위 테스트와 MOCK 흐름은 확인됐지만, 실전 계좌에서 최소수량·킬스위치·장운영시간·체결백필·거절알림까지
+        장시간 canary로 검증한 evidence는 아직 부족하다.
+      </p>
+    </article>
+  </section>
+
+  <h2>완성도를 더 채우는 순서</h2>
+  <table>
+    <thead>
+      <tr><th>남은 %</th><th>우선순위</th><th>해야 할 일</th><th>완료 기준</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>+8%</td>
+        <td><span class="badge bad">P0</span></td>
+        <td>Admin 백필에도 throttle/queue/circuit breaker 적용. Rate Limit 반복 시 즉시 중단하고 다음 윈도우로 이월.</td>
+        <td>admin 1m 백필 8종목 연속 실행 시 KIS_TPS_EXCEEDED 0 또는 허용 임계 이하</td>
+      </tr>
+      <tr>
+        <td>+6%</td>
+        <td><span class="badge bad">P0</span></td>
+        <td>1m KIS 응답 정렬과 sanity check 기준 수정. monotonic 대량 경고를 0으로 만들고 성공/미커버/실패를 분리.</td>
+        <td>백필 1회당 monotonic warning 0, inserted/uncovered/fail count가 사용자에게 설명 가능</td>
+      </tr>
+      <tr>
+        <td>+5%</td>
+        <td><span class="badge warn">P1</span></td>
+        <td>캔들 stale reason 모델 추가: last tick, WS subscription, last insert, backfill result, rate limit, market session.</td>
+        <td>화면에서 “왜 수집 안 됐는지”가 종목별 1줄로 표시</td>
+      </tr>
+      <tr>
+        <td>+4%</td>
+        <td><span class="badge warn">P1</span></td>
+        <td>시나리오 리플레이와 라이브 게이트 정합: 정규장, risk budget, BUY_BLOCKED, strategy ownership 반영.</td>
+        <td>동일 전략/기간에서 리플레이 decision과 라이브 decision 차이를 UI에서 설명</td>
+      </tr>
+      <tr>
+        <td>+3%</td>
+        <td><span class="badge warn">P1</span></td>
+        <td>REAL canary runbook 추가: 실제 주문 전 dry-run/shadow, 최소수량 MOCK/REAL 별 분리, 킬스위치 검증.</td>
+        <td>장중 1일 canary evidence: 주문 0/1건 단위로 시그널->리스크->KIS 결과 완전 추적</td>
+      </tr>
+      <tr>
+        <td>+3%</td>
+        <td><span class="badge info">P2</span></td>
+        <td>알림 친절도와 감사 trail 보강: strategy name/id, source, rejection reason, rate-limit retry result를 한 메시지에 포함.</td>
+        <td>Slack 알림만 봐도 “왜 주문됐고 왜 막혔는지” 추적 가능</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>현재 판단표</h2>
+  <table>
+    <thead>
+      <tr><th>영역</th><th>판정</th><th>근거</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>시그널 생성</td>
+        <td><span class="badge ok">대체로 정상</span></td>
+        <td>정규장 게이트, data readiness, BUY_BLOCKED 차단, signal id 없는 publish 차단 존재</td>
+      </tr>
+      <tr>
+        <td>리스크 평가</td>
+        <td><span class="badge ok">좋아짐</span></td>
+        <td>REAL context 실패 시 fail-closed, SELL KIS 잔고 검증, risk plan required 추가</td>
+      </tr>
+      <tr>
+        <td>주문 라우터</td>
+        <td><span class="badge ok">핵심 정상</span></td>
+        <td>idempotency, mode gate, kill switch, market-hours gate, pending reconcile 분기 존재</td>
+      </tr>
+      <tr>
+        <td>캔들 실시간 수집</td>
+        <td><span class="badge warn">조건부 정상</span></td>
+        <td>주요 종목 최신성은 회복. 일부 종목 지연과 stale 원인 설명 부족</td>
+      </tr>
+      <tr>
+        <td>KIS Rate Limit</td>
+        <td><span class="badge bad">미완</span></td>
+        <td>자동 폭주는 줄였지만 admin 백필이 TPS exceeded를 계속 발생시킴</td>
+      </tr>
+      <tr>
+        <td>실전 무인 운영</td>
+        <td><span class="badge warn">아직 보류 권장</span></td>
+        <td>REAL canary, rate-limit circuit breaker, 백필 정합, 관측성 보강 전에는 완전 자동 운용 리스크가 남음</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout ok">
+    <b>권장 운영 상태:</b>
+    지금은 MOCK/시나리오 QA와 제한적 장중 관찰은 가능하다.
+    REAL 자동매매는 소액 canary와 강한 KillSwitch 준비 후 단계적으로 켜는 것이 맞다.
+    특히 admin 1m 백필은 현재 상태에서 연속 실행하지 않는 편이 안전하다.
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>consumer scale-out · Kafka sharding · KIS WS quota guide</title>
+  <style>
+    :root {
+      --bg:#f3f6fb;--panel:#fff;--ink:#111827;--muted:#475467;--line:#cbd5e1;
+      --green:#0f6b3d;--amber:#92400e;--red:#b42318;--blue:#075eac;--violet:#5b21b6;
+      --soft-green:#eaf7ee;--soft-amber:#fff4df;--soft-red:#fff0ef;--soft-blue:#eaf3ff;--soft-violet:#f1edff;
+      --code:#07111f;--code-ink:#f8fafc;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.68 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .page{max-width:1320px;margin:0 auto;padding:38px 28px 70px}
+    .hero{display:grid;gap:15px;padding:32px;border:2px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05),0 10px 24px rgba(16,24,40,.04)}
+    h1{font-size:34px;line-height:1.24;margin:0;letter-spacing:0}
+    h2{font-size:27px;line-height:1.28;margin:46px 0 0;padding-top:6px;color:#0f172a;letter-spacing:0}
+    h3{font-size:20px;line-height:1.35;margin:0 0 10px;color:#111827;letter-spacing:0}
+    h4{font-size:17px;line-height:1.35;margin:20px 0 7px;color:#1f2937;letter-spacing:0}
+    p{margin:10px 0 0}.muted{color:var(--muted)}.small{font-size:15px}.strong{font-weight:800}
+    code{padding:2px 6px;border-radius:5px;background:#e8eef7;color:#0f172a;font-size:.95em;font-weight:700}
+    pre{margin:16px 0 0;padding:20px 22px;overflow:visible;border-radius:10px;background:var(--code);color:var(--code-ink);font-size:15.5px;line-height:1.72;border:2px solid #334155;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+    pre code{display:block;padding:0;border-radius:0;background:transparent;color:inherit;font:inherit;white-space:pre-wrap;word-break:break-word}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;font-size:15.5px}
+    th{background:#eef3f8;color:#1f2937;font-size:15px}
+    tr:last-child td{border-bottom:0}
+    ul{margin:9px 0 0 20px;padding:0}li{margin:5px 0}
+    .grid{display:grid;gap:14px}.cols2{grid-template-columns:repeat(2,minmax(0,1fr))}.cols3{grid-template-columns:repeat(3,minmax(0,1fr))}.cols4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .card{margin-top:18px;padding:24px;border:2px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:13px;font-weight:800;white-space:nowrap}
+    .ok{color:var(--green);background:var(--soft-green)}.warn{color:var(--amber);background:var(--soft-amber)}.bad{color:var(--red);background:var(--soft-red)}.info{color:var(--blue);background:var(--soft-blue)}.violet{color:var(--violet);background:var(--soft-violet)}
+    .flow{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch;margin-top:16px;overflow:visible;padding-bottom:0}
+    .box{min-width:190px;max-width:260px;flex:1 1 190px;padding:16px;border:2px solid var(--line);border-radius:8px;background:#fff;position:relative}
+    .box:not(:last-child)::after{display:none}
+    .box b{display:block;font-size:16px;color:#111827}.box small{display:block;margin-top:7px;color:#344054;font-size:14px;line-height:1.48}
+    .box.good{border-color:#74c69d;background:#f0fbf4}.box.warn{border-color:#f1b84b;background:#fff8e8}.box.bad{border-color:#ef8e86;background:#fff3f2}.box.blue{border-color:#86bdf2;background:#eef7ff}.box.violet{border-color:#c4b5fd;background:#f5f3ff}
+    .swim{display:grid;grid-template-columns:160px 1fr;gap:10px;margin-top:12px}
+    .lane-title{font-weight:800;color:#1f2937;padding:12px;border:2px solid var(--line);border-radius:8px;background:#eef3f8}
+    .lane{display:flex;flex-wrap:wrap;gap:8px;align-items:center;overflow:visible;padding:12px;border:2px solid var(--line);border-radius:8px;background:#fff}
+    .pill{display:inline-flex;align-items:center;justify-content:center;padding:8px 11px;border-radius:999px;border:1px solid var(--line);background:#f8fafc;font-size:14px;font-weight:650;white-space:nowrap}
+    .pill.hot{background:var(--soft-red);border-color:#ef8e86;color:var(--red);font-weight:800}
+    .pill.ws{background:var(--soft-blue);border-color:#86bdf2;color:var(--blue);font-weight:800}
+    .pill.poll{background:var(--soft-amber);border-color:#f1b84b;color:var(--amber);font-weight:800}
+    .partition-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px}
+    .partition{border:2px solid var(--line);border-radius:8px;background:#fff;padding:14px}
+    .partition b{display:block;color:#1f2937}.partition span{display:inline-block;margin:7px 5px 0 0;padding:5px 8px;border-radius:7px;background:#e8eef7;font-size:13px;font-weight:700}
+    .note{padding:16px;border:2px solid var(--line);border-radius:8px;background:#fbfdff;margin-top:16px}
+    .warnline{border-left:4px solid var(--amber)}.badline{border-left:4px solid var(--red)}.goodline{border-left:4px solid var(--green)}
+    .kpi{display:grid;gap:6px}.kpi b{font-size:24px}
+    @media (max-width:960px){.cols2,.cols3,.cols4,.partition-grid,.swim{grid-template-columns:1fr}.box:not(:last-child)::after{display:none}.flow{flex-direction:column}}
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="hero">
+    <div>
+      <span class="badge info">교육용 아키텍처 노트</span>
+      <span class="badge violet">Kafka partition by code</span>
+      <span class="badge warn">KIS appkey 40 slots</span>
+    </div>
+    <h1>consumer scale-out, Kafka sharding, KIS WS quota를 우리 시스템 기준으로 이해하기</h1>
+    <p class="muted">작성일: 2026-06-13 · 범위: 현재 magicJar 구조와 대규모 플랫폼 전환 시 필요한 분산 설계 패턴</p>
+    <p><b>핵심 문장</b> — MSA로 모듈이 나뉘었다고 해서 자동으로 scale-out 되는 것은 아니다. <b>stateless 업무는 복제하면 끝</b>이지만, KIS WS 구독처럼 <b>stateful 외부 연결</b>은 “누가 어떤 종목을 소유하는가”를 설계해야 진짜 분산 시스템이 된다.</p>
+  </div>
+
+  <h2>§1. 현재 구조를 한 장으로 보기</h2>
+  <div class="card">
+    <div class="flow">
+      <div class="box blue"><b>api</b><small>SymbolDetail ENTER/EXIT, 전략 감시 수요를 Kafka로 발행</small></div>
+      <div class="box warn"><b>Kafka</b><small>구독 명령 토픽은 현재 1 partition. key=code를 보내는 곳은 있지만 병렬성이 살아나지 않음</small></div>
+      <div class="box bad"><b>consumer task #1</b><small>RealtimeSubscriptionRouter, KisWebSocketBridge, WsSlotBudgetLedger가 로컬 메모리 상태 보유</small></div>
+      <div class="box warn"><b>KIS WS</b><small>appkey/account 기준 40 slot으로 봐야 안전. code × trId 단위 점유</small></div>
+      <div class="box good"><b>market.* topic</b><small>tick/orderbook/status를 다시 Kafka로 publish</small></div>
+    </div>
+    <table>
+      <thead><tr><th>항목</th><th>현재</th><th>scale-out 관점</th></tr></thead>
+      <tbody>
+        <tr><td>구독 명령 key</td><td><code>code</code>를 key로 보내는 코드가 이미 있음</td><td>좋은 씨앗. 같은 종목 ENTER/EXIT를 같은 partition으로 보내는 데 필요</td></tr>
+        <tr><td>구독 명령 partition</td><td><code>symbol.detail.command.v1</code>, <code>market.realtime.demand.v1</code> 모두 <code>partitions(1)</code></td><td>consumer task를 여러 개 띄워도 같은 group에서는 한 task만 처리</td></tr>
+        <tr><td>구독 상태</td><td><code>demandsByCode</code>, <code>subscribedCodes</code>, <code>occupiedChannels</code>가 프로세스 로컬</td><td>전역 assignment/lease 없이는 worker 간 재분배가 안 됨</td></tr>
+        <tr><td>KIS quota</td><td><code>TOTAL_SLOTS=40</code>, <code>H0UNCNT0 30</code>, <code>H0UNASP0 10</code> 정책</td><td>appkey당 40이면 task 증식만으로 400이 안 됨. appkey pool 또는 rolling/polling 전략 필요</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="partition-key">§2. producer key가 partition을 결정하는 방식</h2>
+  <div class="card">
+    <h3>질문: 005930 ENTER와 EXIT가 둘 다 partition 7로 가게 하는 것은 누가 구현하나?</h3>
+    <p>핵심은 producer가 Kafka record의 <b>key</b>를 같은 값으로 보내는 것이다. 우리 코드에도 이미 이 패턴이 있다.</p>
+    <pre><code class="language-kotlin">// 현재 우리 코드와 같은 형태
+// SymbolController.publishSymbolDetailCommand(...)
+kafkaTemplate.send("symbol.detail.command.v1", code, payload)
+
+// StrategyRealtimeDemandPublisher / ScreenerService / DaytradeDiscoverService 계열
+kafkaTemplate.send("market.realtime.demand.v1", code, payload)</code></pre>
+    <p>여기서 두 번째 인자 <code>code</code>가 Kafka key다. <code>code="005930"</code>이면 ENTER도 EXIT도 같은 key를 갖는다.</p>
+    <pre><code class="language-kotlin">fun publishSymbolRealtimeCommand(code: String, action: String) {
+    val payload = objectMapper.writeValueAsString(
+        mapOf(
+            "action" to action,      // "ENTER" or "EXIT"
+            "code" to code,          // "005930"
+            "userId" to currentUserId(),
+        ),
+    )
+
+    // 중요: key = code
+    kafkaTemplate.send("symbol.detail.command.v1", code, payload)
+}</code></pre>
+    <div class="note warnline">
+      <p><b>partition 7은 예시다.</b> Kafka가 보장하는 것은 “같은 key는 같은 partition으로 간다”는 점이다. 실제 partition 번호가 7인지 3인지는 partition 개수와 hash 결과에 따라 달라진다.</p>
+    </div>
+    <h4>Kafka 기본 partition 계산 개념</h4>
+    <pre><code class="language-kotlin">// Kafka DefaultPartitioner 개념식
+// 실제 구현은 Kafka client 내부에 있다.
+val keyBytes = "005930".toByteArray(Charsets.UTF_8)
+val hash = Utils.toPositive(Utils.murmur2(keyBytes))
+val partition = hash % topicPartitionCount
+
+// 그래서 topicPartitionCount=16이고 결과가 7이면:
+// 005930 ENTER -> partition 7
+// 005930 EXIT  -> partition 7</code></pre>
+    <div class="flow">
+      <div class="box blue"><b>ENTER 005930</b><small>key = 005930</small></div>
+      <div class="box blue"><b>murmur2 hash</b><small>Kafka client 기본 key hash</small></div>
+      <div class="box blue"><b>% partitionCount</b><small>예: 16 partitions</small></div>
+      <div class="box good"><b>partition 7</b><small>consumer worker B가 소유</small></div>
+    </div>
+    <div class="flow">
+      <div class="box blue"><b>EXIT 005930</b><small>key = 005930</small></div>
+      <div class="box blue"><b>same hash</b><small>key가 같으니 hash도 같음</small></div>
+      <div class="box blue"><b>same modulo</b><small>partitionCount가 같으면 결과 동일</small></div>
+      <div class="box good"><b>partition 7</b><small>같은 worker B가 해제 처리</small></div>
+    </div>
+    <h4>“partition 0 = codes A~F”와 같은 얘기인가?</h4>
+    <p>개념적으로는 같은 “샤딩” 이야기지만, 구현은 다르다. Kafka 기본은 <b>알파벳 범위 A~F</b>가 아니라 <b>hash bucket</b>이다.</p>
+    <div class="partition-grid">
+      <div class="partition"><b>partition 0</b><span>003490</span><span>078930</span><span>251270</span></div>
+      <div class="partition"><b>partition 1</b><span>005930</span><span>000660</span></div>
+      <div class="partition"><b>partition 2</b><span>035420</span><span>068270</span></div>
+      <div class="partition"><b>partition 3</b><span>042700</span><span>093370</span></div>
+    </div>
+    <p class="muted small">위 표는 hash bucket 예시다. 특정 코드가 어느 partition으로 갈지는 hash 결과에 달려 있다. 진짜 A~F range partition을 원하면 custom partitioner나 별도 shard map이 필요하다.</p>
+  </div>
+
+  <h2>§3. Kafka 설정은 어떻게 바뀌어야 하나</h2>
+  <div class="card">
+    <div class="grid cols2">
+      <div class="card">
+        <h3>현재</h3>
+        <pre><code class="language-kotlin">TopicBuilder
+    .name("symbol.detail.command.v1")
+    .partitions(1)
+    .replicas(1)
+    .build()
+
+TopicBuilder
+    .name("market.realtime.demand.v1")
+    .partitions(1)
+    .replicas(1)
+    .build()</code></pre>
+        <pre><code class="language-yaml">spring:
+  kafka:
+    listener:
+      concurrency: 1</code></pre>
+      </div>
+      <div class="card">
+        <h3>scale-out 목표</h3>
+        <pre><code class="language-kotlin">TopicBuilder
+    .name("symbol.detail.command.v2")
+    .partitions(32)
+    .replicas(3)
+    .config("cleanup.policy", "delete")
+    .build()
+
+TopicBuilder
+    .name("market.realtime.demand.v2")
+    .partitions(32)
+    .replicas(3)
+    .build()</code></pre>
+        <pre><code class="language-yaml">spring:
+  kafka:
+    listener:
+      concurrency: ${MAGICJAR_CONSUMER_CONCURRENCY:4}</code></pre>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>규칙</th><th>설명</th><th>우리 시스템 의미</th></tr></thead>
+      <tbody>
+        <tr><td>병렬 처리 상한</td><td><code>min(partitions, active consumer threads)</code></td><td>partition이 1이면 consumer task 10개여도 1개만 일함</td></tr>
+        <tr><td>순서 보장 단위</td><td>같은 key는 같은 partition 안에서 순서 보장</td><td><code>005930 ENTER</code> 다음 <code>005930 EXIT</code> 순서가 유지됨</td></tr>
+        <tr><td>다른 key 병렬성</td><td>다른 code는 다른 partition으로 갈 수 있음</td><td>삼성전자와 SK하이닉스 구독 처리가 다른 worker에서 병렬 가능</td></tr>
+        <tr><td>토픽 증설 주의</td><td>partition 수 변경은 key→partition mapping을 바꿀 수 있음</td><td>active subscription이 많은 장중에는 증설/리밸런스 전략 필요</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§4. 디자인 패턴 케이스</h2>
+  <div class="card">
+    <h3>패턴 A — Stateless Competing Consumers</h3>
+    <p>뉴스 처리, 알림 포맷팅, 계산성 작업처럼 “어느 worker가 해도 상관없는” 일에 좋다. KIS WS 구독처럼 외부 상태를 잡는 일에는 부족하다.</p>
+    <div class="flow">
+      <div class="box blue"><b>producer</b><small>key는 userId/random 가능</small></div>
+      <div class="box blue"><b>Kafka N partitions</b><small>분산 queue</small></div>
+      <div class="box good"><b>worker pool</b><small>아무 worker나 처리</small></div>
+      <div class="box good"><b>idempotent DB write</b><small>중복 처리 방어</small></div>
+    </div>
+    <pre><code class="language-kotlin">// producer — 순서보다 처리량이 중요할 때
+kafkaTemplate.send("news.collected.v1", stockCode, payload)
+
+// consumer — 어떤 worker가 받아도 됨
+@KafkaListener(topics = ["news.collected.v1"], groupId = "news-workers")
+fun onNews(record: ConsumerRecord&lt;String, String&gt;) {
+    val event = parse(record.value())
+    newsRepository.upsertByUniqueUrlHash(event)
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>패턴 B — Kafka Partition-Owned Shard</h3>
+    <p>구독 시스템의 1차 확장 패턴이다. code key로 partition을 고정하고, partition을 소유한 worker가 해당 code들의 구독 owner가 된다.</p>
+    <div class="flow">
+      <div class="box blue"><b>key=005930</b><small>ENTER/EXIT 동일 key</small></div>
+      <div class="box blue"><b>partition 7</b><small>Kafka가 hash로 결정</small></div>
+      <div class="box good"><b>worker B</b><small>partition 7 소유</small></div>
+      <div class="box good"><b>WS session B</b><small>005930 subscribe/unsubscribe</small></div>
+    </div>
+    <pre><code class="language-kotlin">// producer
+fun enter(code: String, owner: String, ownerId: String) {
+    val payload = json(
+        "action" to "ENTER",
+        "code" to code,
+        "owner" to owner,
+        "ownerId" to ownerId,
+    )
+    kafkaTemplate.send("market.realtime.demand.v2", code, payload)
+}
+
+fun exit(code: String, owner: String, ownerId: String) {
+    val payload = json("action" to "EXIT", "code" to code, "owner" to owner, "ownerId" to ownerId)
+    kafkaTemplate.send("market.realtime.demand.v2", code, payload)
+}</code></pre>
+    <pre><code class="language-kotlin">// consumer worker — assigned partition 안의 code만 처리
+@KafkaListener(
+    topics = ["market.realtime.demand.v2"],
+    groupId = "realtime-subscription-workers",
+    concurrency = "\${magicjar.realtime.consumer-concurrency:4}",
+)
+fun onDemand(record: ConsumerRecord&lt;String, String&gt;, ack: Acknowledgment) {
+    val code = record.key()              // "005930"
+    val command = parse(record.value())
+
+    when (command.action) {
+        "ENTER" -&gt; router.request(command.owner, command.ownerId, code)
+        "EXIT"  -&gt; router.release(command.owner, command.ownerId, code)
+    }
+    ack.acknowledge()
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>패턴 C — Lease-Based Subscription Allocator</h3>
+    <p>Kafka partition 소유와 별개로, Redis/DB lease가 “이 code+trId는 worker-2가 잡는다”를 결정한다. 동적 capacity와 worker 장애 복구가 쉬워진다.</p>
+    <div class="flow">
+      <div class="box blue"><b>demand</b><small>005930 필요</small></div>
+      <div class="box violet"><b>allocator</b><small>capacity·priority 계산</small></div>
+      <div class="box warn"><b>Redis lease</b><small>005930:H0UNCNT0 → worker-2, ttl 30s</small></div>
+      <div class="box good"><b>worker-2</b><small>fencing token 확인 후 subscribe</small></div>
+    </div>
+    <pre><code class="language-kotlin">data class Lease(
+    val appKeyId: String,
+    val trId: String,
+    val code: String,
+    val workerId: String,
+    val version: Long,
+    val leaseUntilMs: Long,
+)
+
+fun assignLease(command: DemandCommand): Lease {
+    val worker = pickWorker(command.appKeyId, command.trId, command.code)
+    val version = redis.incr("sub:assignment:version:${command.appKeyId}:${command.trId}:${command.code}")
+    val lease = Lease(command.appKeyId, command.trId, command.code, worker.id, version, nowMs() + 30_000)
+
+    redis.set(
+        "sub:lease:${command.appKeyId}:${command.trId}:${command.code}",
+        json(lease),
+        ttl = Duration.ofSeconds(30),
+    )
+    kafkaTemplate.send("ws.worker.command.v1", worker.id, json(SubscribeCommand(lease)))
+    return lease
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>패턴 D — Control Plane / Data Plane</h3>
+    <p>우리 시스템이 대규모로 갈 때 가장 잘 맞는 형태다. 이유는 간단하다. KIS appkey별 40 quota, owner priority, HOLDING/PENDING_BUY 보호, DETAIL/STRATEGY eviction, rolling/polling fallback, global UI가 모두 “구독 결정을 중앙에서 해야” 일관성이 생긴다.</p>
+    <div class="flow">
+      <div class="box blue"><b>Demand Producers</b><small>api, screener, strategy, symbol detail</small></div>
+      <div class="box violet"><b>Control Plane</b><small>Subscription Manager, quota scheduler, assignment store</small></div>
+      <div class="box warn"><b>Assignment Store</b><small>code+trId → appKey+worker+version</small></div>
+      <div class="box good"><b>Data Plane</b><small>WS workers. subscribe/tick publish만 담당</small></div>
+      <div class="box blue"><b>Kafka market.*</b><small>tick/orderbook/status fanout</small></div>
+    </div>
+    <h4>권장 topic 설계</h4>
+    <pre><code class="language-text">realtime.demand.v2              key = tenantId:code              partitions = 32~128
+subscription.assignment.v1      key = appKeyId:trId:code          compacted, partitions = 32~128
+ws.worker.command.v1            key = workerId                    partitions = worker shard count
+ws.worker.heartbeat.v1          key = workerId                    compacted or short retention
+market.tick.v2                  key = tenantId:code               partitions = 64~256
+market.orderbook.v2             key = tenantId:code               partitions = 64~256
+realtime.status.snapshot.v1     key = workerId                    compacted</code></pre>
+    <h4>권장 assignment schema</h4>
+    <pre><code class="language-sql">CREATE TABLE realtime_subscription_assignment (
+  app_key_id      VARCHAR(64) NOT NULL,
+  tr_id           VARCHAR(16) NOT NULL,
+  code            VARCHAR(6)  NOT NULL,
+  worker_id       VARCHAR(64) NOT NULL,
+  owner_summary   JSONB       NOT NULL,
+  priority_score  INT         NOT NULL,
+  status          VARCHAR(20) NOT NULL, -- ASSIGNED, DRAINING, RELEASED
+  version         BIGINT      NOT NULL,
+  lease_until     TIMESTAMPTZ NOT NULL,
+  updated_at      TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (app_key_id, tr_id, code)
+);</code></pre>
+    <h4>worker 설정 예</h4>
+    <pre><code class="language-yaml">magicjar:
+  ws:
+    worker-id: ${POD_NAME}
+    appkey-pool-id: ${MAGICJAR_APPKEY_POOL_ID}
+    max-slots-per-appkey: 40
+    heartbeat-interval-ms: 5000
+    lease-ttl-ms: 30000
+    graceful-revoke-timeout-ms: 5000</code></pre>
+  </div>
+
+  <h2 id="kis-quota-patterns">§5. KIS appkey당 40 slot 파훼 패턴</h2>
+  <div class="card">
+    <h3>먼저 인정할 것</h3>
+    <p>KIS가 appkey/account 단위로 40을 제한한다면, 같은 appkey로 worker를 10개 띄워도 진짜 실시간 400개는 불가능하다. 가능한 것은 <b>사용자/appkey별 quota를 분리</b>하거나, <b>우선순위 기반으로 40개를 굴리는 것</b>이다.</p>
+  </div>
+
+  <div class="card">
+    <h3>패턴 R1 — Priority Active Set</h3>
+    <p>항상 필요한 것만 40개 안에 넣는다. 보유/미체결은 lock, 전략 후보와 상세 화면은 우선순위로 밀어낸다.</p>
+    <div class="swim">
+      <div class="lane-title">Locked</div>
+      <div class="lane"><span class="pill hot">HOLDING</span><span class="pill hot">PENDING_BUY</span></div>
+      <div class="lane-title">Candidates</div>
+      <div class="lane"><span class="pill">STRATEGY score 92</span><span class="pill">STRATEGY score 81</span><span class="pill">DETAIL open tab</span><span class="pill">low score watch</span></div>
+      <div class="lane-title">Selected 40</div>
+      <div class="lane"><span class="pill ws">WS</span><span class="pill ws">WS</span><span class="pill ws">WS</span><span class="pill poll">polling fallback</span></div>
+    </div>
+    <pre><code class="language-kotlin">fun selectActiveWsSet(demands: List&lt;Demand&gt;, maxSlots: Int = 40): Selection {
+    val reserved = 1 // H0STCNI execution notice
+    val capacity = maxSlots - reserved
+
+    val locked = demands.filter { it.owner in setOf(HOLDING, PENDING_BUY) }
+    require(locked.size &lt;= capacity) { "locked demands exceed KIS quota" }
+
+    val candidates =
+        demands
+            .filterNot { it in locked }
+            .sortedWith(compareByDescending&lt;Demand&gt; { it.priorityScore }.thenBy { it.lastSeenAt })
+
+    val selected = locked + candidates.take(capacity - locked.size)
+    val fallback = demands - selected.toSet()
+
+    return Selection(ws = selected, polling = fallback)
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>패턴 R2 — Rolling Window / Squeeze Pattern</h3>
+    <p>사용자 표현대로 “쥐어짜기” 패턴이다. 모든 400개를 동시에 WS로 보는 게 아니라, 낮은 우선순위 후보를 40개 단위로 회전시킨다. 단, 손절/청산 재료인 HOLDING은 절대 rolling 대상이 아니다.</p>
+    <div class="flow">
+      <div class="box good"><b>slot 0~12</b><small>HOLDING/PENDING_BUY 고정</small></div>
+      <div class="box blue"><b>slot 13~39</b><small>STRATEGY/DETAIL 후보 27개</small></div>
+      <div class="box warn"><b>every 5~15s</b><small>낮은 우선순위만 rotate</small></div>
+      <div class="box blue"><b>REST backfill</b><small>미수신 구간 보완</small></div>
+    </div>
+    <pre><code class="language-kotlin">fun rotateLowPriorityWindow(state: AppKeyState) {
+    val locked = state.active.filter { it.owner in setOf(HOLDING, PENDING_BUY) }
+    val rollingCapacity = 40 - 1 - locked.size
+
+    val nextWindow =
+        state.lowPriorityRing
+            .next(rollingCapacity)
+            .filterNot { it.code in locked.map { d -&gt; d.code } }
+
+    val target = locked + nextWindow
+
+    val toUnsubscribe = state.currentWs - target.toSet()
+    val toSubscribe = target.toSet() - state.currentWs
+
+    ws.unsubscribe(toUnsubscribe)
+    ws.subscribe(toSubscribe)
+
+    // rolling으로 생긴 tick gap은 REST로 보완
+    toUnsubscribe.forEach { gapFill.enqueue(it.code) }
+}</code></pre>
+    <div class="note badline">
+      <p><b>한계</b>: rolling은 “전 종목 실시간”이 아니다. 400개를 관찰하는 듯 보이게 만들 수는 있지만, tick-by-tick 정확도가 필요한 손절·미체결·시장가 근접 판단에는 쓰면 안 된다.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>패턴 R3 — Polling Base + WS Promotion</h3>
+    <p>기본은 REST polling/candle 기반으로 넓게 보고, 조건이 가까워진 종목만 WS로 승격한다.</p>
+    <div class="flow">
+      <div class="box warn"><b>400 symbols</b><small>REST polling / candle scan</small></div>
+      <div class="box blue"><b>near trigger</b><small>가격·거래량·스코어 임계 근접</small></div>
+      <div class="box good"><b>promote to WS</b><small>30분 TTL STRATEGY owner</small></div>
+      <div class="box good"><b>order path</b><small>실시간 호가/체결가 기반 판단</small></div>
+      <div class="box warn"><b>demote</b><small>TTL 만료·우선순위 하락</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>패턴 R4 — Tenant/AppKey Group Sharding</h3>
+    <p>플랫폼형 시스템이라면 가장 정석이다. user A의 appkey는 user A quota 40, user B의 appkey는 user B quota 40으로 독립시킨다. worker pool은 appKeyId 단위로 shard를 잡는다.</p>
+    <div class="flow">
+      <div class="box blue"><b>user A</b><small>appKey A, 40 slots</small></div>
+      <div class="box blue"><b>appKey group A</b><small>worker A-0/A-1</small></div>
+      <div class="box good"><b>WS A</b><small>A 계정 구독만 처리</small></div>
+      <div class="box warn"><b>market.tick.v2</b><small>key=tenantId:code</small></div>
+    </div>
+    <div class="flow">
+      <div class="box blue"><b>user B</b><small>appKey B, 40 slots</small></div>
+      <div class="box blue"><b>appKey group B</b><small>worker B-0/B-1</small></div>
+      <div class="box good"><b>WS B</b><small>B 계정 구독만 처리</small></div>
+      <div class="box warn"><b>market.tick.v2</b><small>key=tenantId:code</small></div>
+    </div>
+    <pre><code class="language-text">tenant A
+  appKey A
+    worker A-0: partitions [0, 1], slots 31/40
+    worker A-1: standby or orderbook-only, slots 8/40
+
+tenant B
+  appKey B
+    worker B-0: partitions [2, 3], slots 26/40
+    worker B-1: standby or rolling window, slots 12/40</code></pre>
+    <div class="note warnline">
+      <p>우리 현재 구조는 single-tenant에 가까워서 “appkey group 아래에 subscription id가 붙는” 플랫폼형 모델은 아직 약하다. 장기적으로는 <code>appKeyId + trId + code</code>가 assignment의 1급 키가 되어야 한다.</p>
+    </div>
+  </div>
+
+  <h2 id="worker-rebalance">§6. worker가 올라가고 내려갈 때: rebalance 상세 구현</h2>
+  <div class="card">
+    <h3>분산 구독에서 제일 중요한 흐름</h3>
+    <div class="swim">
+      <div class="lane-title">1. Join</div>
+      <div class="lane"><span class="pill">worker-3 boot</span><span class="pill">heartbeat start</span><span class="pill">capacity report</span></div>
+      <div class="lane-title">2. Assign</div>
+      <div class="lane"><span class="pill">control plane picks shard</span><span class="pill">assignment version +1</span><span class="pill">lease written</span></div>
+      <div class="lane-title">3. Subscribe</div>
+      <div class="lane"><span class="pill ws">worker checks token</span><span class="pill ws">KIS subscribe</span><span class="pill">snapshot publish</span></div>
+      <div class="lane-title">4. Revoke</div>
+      <div class="lane"><span class="pill poll">status DRAINING</span><span class="pill poll">unsubscribe</span><span class="pill poll">REST gap fill</span></div>
+      <div class="lane-title">5. Failover</div>
+      <div class="lane"><span class="pill hot">heartbeat expired</span><span class="pill hot">lease stolen</span><span class="pill ws">new worker resubscribe</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>안전장치 7개</h3>
+    <table>
+      <thead><tr><th>장치</th><th>무엇인가</th><th>왜 필요한가</th><th>가벼운 구현 예</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>worker heartbeat</b></td>
+          <td>worker가 “나 살아있고 현재 slot N개 사용 중”을 주기적으로 알림</td>
+          <td>죽은 worker의 구독을 다른 worker가 회수할 수 있어야 함</td>
+          <td><code>SET worker:{id}:heartbeat ttl=15s</code></td>
+        </tr>
+        <tr>
+          <td><b>lease TTL</b></td>
+          <td>assignment 소유권의 만료 시간</td>
+          <td>worker가 죽었는데 영원히 소유자로 남는 것을 방지</td>
+          <td><code>lease_until = now + 30s</code></td>
+        </tr>
+        <tr>
+          <td><b>fencing token</b></td>
+          <td>assignment version. 명령마다 포함되는 세대 번호</td>
+          <td>옛 worker가 늦게 unsubscribe/subscribe해서 새 소유권을 덮는 것을 방지</td>
+          <td><code>if (cmd.version != current.version) ignore</code></td>
+        </tr>
+        <tr>
+          <td><b>graceful revoke</b></td>
+          <td>소유권을 넘기기 전에 기존 worker가 unsubscribe하고 상태를 DRAINING 처리</td>
+          <td>중복 구독, KIS quota 초과, tick 이중 발행 방지</td>
+          <td><code>ASSIGNED → DRAINING → RELEASED</code></td>
+        </tr>
+        <tr>
+          <td><b>assign 시 resubscribe</b></td>
+          <td>새 worker가 assignment store를 읽고 필요한 code를 재구독</td>
+          <td>rebalance 후 WS 구독 공백을 줄임</td>
+          <td><code>onPartitionsAssigned { loadAssignments(); subscribeAll(); }</code></td>
+        </tr>
+        <tr>
+          <td><b>REST gap backfill</b></td>
+          <td>revoke/assign 사이에 빠진 1m 데이터 보완</td>
+          <td>WS 재분배 중 tick이 끊겨도 candle 정합성 보존</td>
+          <td><code>gapFill.enqueue(code, from=lastTickAt)</code></td>
+        </tr>
+        <tr>
+          <td><b>assignment version</b></td>
+          <td>중복 방지용 단조 증가 숫자</td>
+          <td>명령 재전송, Kafka 재처리, 늦은 worker 이벤트를 안전하게 무시</td>
+          <td><code>version = redis.incr(key)</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <pre><code class="language-kotlin">fun handleWorkerCommand(cmd: SubscribeCommand) {
+    val current = assignmentStore.find(cmd.appKeyId, cmd.trId, cmd.code)
+
+    // fencing token: 오래된 명령이면 무시
+    if (current.version != cmd.version || current.workerId != workerId) {
+        log.info("stale command ignored: code={} cmdVersion={} current={}", cmd.code, cmd.version, current.version)
+        return
+    }
+
+    ws.subscribe(cmd.trId, cmd.code)
+    assignmentStore.markActive(cmd.appKeyId, cmd.trId, cmd.code, cmd.version)
+}
+
+fun gracefulRevoke(assignment: Assignment) {
+    assignmentStore.markDraining(assignment.key, assignment.version)
+    ws.unsubscribe(assignment.trId, assignment.code)
+    gapFill.enqueue(assignment.code, from = assignment.lastTickAt)
+    assignmentStore.markReleased(assignment.key, assignment.version)
+}</code></pre>
+  </div>
+
+  <h2 id="stateful-rebalance">§7. Stateful Rebalancing: server 4 투입 시 정합성 답안</h2>
+  <div class="card">
+    <h3>답: Kafka rebalance만으로는 부족하고, ownership handoff 프로토콜이 필요하다</h3>
+    <p>서버 4를 새로 넣는 순간의 핵심은 “서버 1, 2, 3의 메모리를 서버 4로 복사한다”가 아니다. 실무적으로는 <b>소유권, lease, checkpoint, Redis/API 갱신 권한</b>을 버전 있게 넘긴다. 그래야 늦게 도착한 old worker 이벤트가 새 state를 덮어쓰지 못한다.</p>
+    <table>
+      <thead><tr><th>구분</th><th>무엇이 이동하나</th><th>안전장치</th><th>우리 시스템 기준</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Kafka partition rebalance</b></td>
+          <td>consumer가 맡는 partition ownership</td>
+          <td>offset commit, partition revoke/assign listener</td>
+          <td><code>key=code</code>이면 같은 종목 이벤트 순서가 partition 안에서 유지됨</td>
+        </tr>
+        <tr>
+          <td><b>Subscription assignment rebalance</b></td>
+          <td><code>appKeyId + trId + code</code> 구독 소유권</td>
+          <td>assignment version, lease TTL, fencing token</td>
+          <td>KIS WS 구독은 이 계층이 진짜 핵심. 현재 로컬 map 구조만으로는 부족</td>
+        </tr>
+        <tr>
+          <td><b>Redis/API read model handoff</b></td>
+          <td>화면/API가 읽는 realtime snapshot/cache 갱신 권한</td>
+          <td>versioned write, idempotency key, stale event drop</td>
+          <td>old worker tick이 Redis 최신값을 덮지 못하게 해야 함</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note badline">
+      <p><b>현재 구조 판정</b>: 문서의 target architecture에는 답이 있지만, 현재 코드 구조는 아직 완전한 답이 아니다. 이유는 <code>demandsByCode</code>, <code>subscribedCodes</code>, <code>occupiedChannels</code>가 worker 로컬 state라서 server 4가 들어왔을 때 전역적으로 “누가 무엇을 넘겨받는지”를 안전하게 합의할 저장소가 약하기 때문이다.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>server 4 투입 시 안전한 이동 흐름</h3>
+    <div class="swim">
+      <div class="lane-title">1. 감지</div>
+      <div class="lane"><span class="pill">server-4 heartbeat</span><span class="pill">capacity 0/40</span><span class="pill">join candidate</span></div>
+      <div class="lane-title">2. 계획</div>
+      <div class="lane"><span class="pill">control plane selects codes</span><span class="pill">005930 from server-1</span><span class="pill">000660 from server-2</span></div>
+      <div class="lane-title">3. Freeze</div>
+      <div class="lane"><span class="pill poll">assignment version +1</span><span class="pill poll">state DRAINING</span><span class="pill poll">old write fenced</span></div>
+      <div class="lane-title">4. Checkpoint</div>
+      <div class="lane"><span class="pill">lastTickAt 저장</span><span class="pill">lastKafkaOffset 저장</span><span class="pill">cache version 저장</span></div>
+      <div class="lane-title">5. Handoff</div>
+      <div class="lane"><span class="pill ws">server-1 unsubscribe</span><span class="pill ws">server-4 acquire lease</span><span class="pill ws">server-4 subscribe</span></div>
+      <div class="lane-title">6. 보정</div>
+      <div class="lane"><span class="pill poll">REST gap backfill</span><span class="pill">dedupe</span><span class="pill">state ACTIVE</span></div>
+    </div>
+    <div class="flow">
+      <div class="box warn"><b>server-1</b><small>005930 v12 ACTIVE → DRAINING</small></div>
+      <div class="box blue"><b>Assignment Store</b><small>005930 owner=server-4, version=13</small></div>
+      <div class="box good"><b>server-4</b><small>version 13 확인 후 KIS subscribe</small></div>
+      <div class="box violet"><b>Redis/API</b><small>version 13 이상 이벤트만 최신값 반영</small></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>ordering issue와 Redis/API 불일치를 막는 코드 패턴</h3>
+    <p>핵심은 모든 쓰기에 <code>assignmentVersion</code>을 실어 보내고, Redis/API read model 갱신 시 현재 소유권 버전과 맞지 않으면 버리는 것이다. 이게 fencing token의 실전 쓰임새다.</p>
+    <pre><code class="language-kotlin">data class TickEvent(
+    val appKeyId: String,
+    val trId: String,
+    val code: String,
+    val assignmentVersion: Long,
+    val eventTime: Instant,
+    val price: BigDecimal,
+    val sourceWorkerId: String,
+)
+
+fun onKisTick(event: TickEvent) {
+    val current = assignmentStore.find(event.appKeyId, event.trId, event.code)
+
+    // server-1이 늦게 보낸 tick이면 server-4 소유권을 덮지 못하게 차단
+    if (current.version != event.assignmentVersion || current.workerId != event.sourceWorkerId) {
+        log.info("stale tick ignored code={} eventVersion={} currentVersion={}",
+            event.code, event.assignmentVersion, current.version)
+        return
+    }
+
+    // Redis/API read model도 버전 조건부 갱신
+    realtimeCache.upsertIfCurrent(
+        key = "rt:${event.appKeyId}:${event.trId}:${event.code}",
+        expectedVersion = event.assignmentVersion,
+        eventTime = event.eventTime,
+        price = event.price,
+    )
+
+    kafkaTemplate.send("market.tick.v2", event.code, event)
+}</code></pre>
+    <pre><code class="language-sql">-- Redis Lua 또는 DB upsert로 표현하면 이런 의미다.
+-- 현재 캐시 버전이 이벤트 버전과 같을 때만 최신 snapshot을 갱신한다.
+UPDATE realtime_snapshot
+   SET price = :price,
+       event_time = :eventTime,
+       updated_by_worker = :workerId
+ WHERE app_key_id = :appKeyId
+   AND tr_id = :trId
+   AND code = :code
+   AND assignment_version = :assignmentVersion;</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>Kafka consumer rebalance listener에서 해야 하는 일</h3>
+    <p>Kafka가 partition을 server 4로 옮겨주는 것은 “메시지를 누가 읽는가”의 문제다. 하지만 우리처럼 WS 구독과 Redis snapshot이 붙은 stateful worker는 partition 이동 순간에 local state를 flush하고, 새 partition에서는 assignment를 다시 읽어 재구독해야 한다.</p>
+    <pre><code class="language-kotlin">class RealtimeConsumerRebalanceListener(
+    private val assignmentStore: AssignmentStore,
+    private val localState: LocalRealtimeState,
+    private val wsBridge: KisWebSocketBridge,
+) : ConsumerAwareRebalanceListener {
+
+    override fun onPartitionsRevokedBeforeCommit(
+        consumer: Consumer&lt;*, *&gt;,
+        partitions: Collection&lt;TopicPartition&gt;,
+    ) {
+        // 1. 처리 중인 tick/checkpoint를 저장
+        localState.flushCheckpoints(partitions)
+
+        // 2. 이 worker가 더 이상 소유하지 않을 구독을 DRAINING 처리
+        assignmentStore.markDrainingByPartitions(partitions)
+
+        // 3. KIS unsubscribe는 version 확인 후 graceful 하게 수행
+        wsBridge.unsubscribeRevoked(partitions)
+    }
+
+    override fun onPartitionsAssigned(
+        consumer: Consumer&lt;*, *&gt;,
+        partitions: Collection&lt;TopicPartition&gt;,
+    ) {
+        // 4. 새 partition에 해당하는 assignment를 전역 저장소에서 로드
+        val assignments = assignmentStore.loadActiveByPartitions(partitions)
+
+        // 5. fencing token 확인 후 resubscribe
+        wsBridge.resubscribe(assignments)
+
+        // 6. revoke/assign 사이 공백은 REST backfill로 보정
+        localState.enqueueGapBackfill(assignments)
+    }
+}</code></pre>
+  </div>
+
+  <div class="card">
+    <h3>실무에서 기억할 불변식</h3>
+    <table>
+      <thead><tr><th>불변식</th><th>깨지면 생기는 문제</th><th>방어 방법</th></tr></thead>
+      <tbody>
+        <tr><td>같은 <code>code</code> 명령은 같은 Kafka partition으로 간다</td><td>ENTER/EXIT 순서 꼬임</td><td><code>kafkaTemplate.send(topic, code, payload)</code></td></tr>
+        <tr><td>한 <code>appKeyId+trId+code</code>의 ACTIVE owner는 하나다</td><td>중복 구독, quota 초과, tick 이중 발행</td><td>unique assignment + lease + fencing token</td></tr>
+        <tr><td>Redis/API snapshot은 현재 owner version만 쓸 수 있다</td><td>old worker가 최신 cache를 덮어씀</td><td>versioned write, CAS, stale event drop</td></tr>
+        <tr><td>handoff 중 유실 구간은 반드시 보정한다</td><td>분봉/전략 판단 누락</td><td><code>lastTickAt</code> checkpoint + REST gap backfill</td></tr>
+        <tr><td>중복 이벤트는 허용하되 결과는 idempotent 해야 한다</td><td>거래 신호 중복, candle 중복 반영</td><td>idempotency key = <code>code+trId+eventTime+version</code></td></tr>
+      </tbody>
+    </table>
+    <div class="note goodline">
+      <p><b>면접용 한 문장</b>: stateful rebalance는 데이터를 그냥 옮기는 게 아니라, “소유권을 버전으로 넘기고, 이전 소유자의 쓰기 권한을 fencing 하며, checkpoint 이후 gap을 backfill 하는 프로토콜”이다.</p>
+    </div>
+  </div>
+
+  <h2 id="stale-candle-handling">§8. 현재 전략 구독 종목의 stale candle 처리</h2>
+  <div class="card">
+    <h3>질문: 구독 중인 전략 종목의 분봉이 stale이면 지금 어떻게 되나?</h3>
+    <p>현재 코드는 “stale을 감지해서 매수를 막는 안전장치”는 있다. 하지만 “stale을 발견하면 자동으로 재수집·재합산해서 READY로 복구하는 완성형 루프”는 아직 약하다.</p>
+    <div class="flow">
+      <div class="box blue"><b>ACTIVE 전략</b><small>consumer가 60초마다 전략 종목 수요를 보강</small></div>
+      <div class="box blue"><b>KIS tick 수신</b><small>Redis candle:current:{code}:1m 갱신</small></div>
+      <div class="box good"><b>1m close</b><small>TickToMinuteAggregator가 DB 저장 + Kafka publish</small></div>
+      <div class="box good"><b>3m~12h close</b><small>BoundaryAggregator가 1m DB 기반 합산</small></div>
+      <div class="box warn"><b>Readiness Gate</b><small>latest candle 누락/지연이면 BUY suppress</small></div>
+      <div class="box bad"><b>부족한 부분</b><small>stale 감지 후 자동 backfill/re-aggregate는 완결 아님</small></div>
+    </div>
+    <table>
+      <thead><tr><th>상황</th><th>현재 처리</th><th>결과</th><th>부족한 점</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>전략 종목이 ACTIVE 상태</td>
+          <td><code>ActiveStrategyDemandRegistrar</code>가 DB의 ACTIVE/BUY_BLOCKED 전략을 읽고 WS demand를 반복 등록</td>
+          <td>브라우저가 꺼져도 구독 수요는 서버가 유지</td>
+          <td>slot 한도 초과로 queued 상태면 실제 tick은 못 받음</td>
+        </tr>
+        <tr>
+          <td>1m live tick 정상 수신</td>
+          <td><code>KisWebSocketBridge</code>가 Redis current candle 갱신, <code>TickToMinuteAggregator</code>가 매분 close</td>
+          <td>1m DB + <code>market.candle.minute.closed.v1</code> 생성</td>
+          <td>tick이 아예 안 들어온 구간은 mock candle을 만들지 않고 skip</td>
+        </tr>
+        <tr>
+          <td>3m~12h 평가 시점</td>
+          <td><code>BoundaryAggregator</code>가 boundary 구간의 1m DB를 읽어 합산</td>
+          <td>상위봉 DB + close topic 생성</td>
+          <td>1m source가 비어 있거나 부족하면 합산 결과도 비거나 왜곡될 수 있음</td>
+        </tr>
+        <tr>
+          <td>분봉 stale/누락 감지</td>
+          <td><code>DataReadinessService.check()</code>가 latest interval candle, latest 1m을 검사</td>
+          <td><code>RealtimeSignalGenerator</code>가 신규 BUY를 막고 audit 저장</td>
+          <td>그 자리에서 자동 복구 job을 강제 enqueue하지는 않음</td>
+        </tr>
+        <tr>
+          <td>기존 보유 포지션 SELL</td>
+          <td>readiness가 나빠도 SELL은 진행 가능하게 설계</td>
+          <td>손절/익절 같은 자본 회수 경로는 막지 않음</td>
+          <td>좋은 방어지만, stale 원인 해결과는 별개</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>현재 런타임 게이트의 의미</h3>
+    <p>현재 방어는 “잘못된 데이터로 신규 매수하지 않게 막는 것”에 가깝다. 전략이 ACTIVE여도 candle readiness가 READY가 아니면 BUY 신호 발행을 억제한다.</p>
+    <pre><code class="language-kotlin">// 현재 구조의 의미를 줄인 예시
+val readiness = dataReadinessService.check(code, interval, boundaryTs)
+
+if (!readiness.ready) {
+    // 신규 자본 투입은 막는다.
+    buySuppressed = true
+    auditTrail.save("SIGNAL_SKIPPED_DATA_NOT_READY", readiness.reason)
+
+    // 이미 보유한 자본 회수 경로는 살린다.
+    sellAllowed = true
+}</code></pre>
+    <div class="note warnline">
+      <p><b>중요</b>: 이건 “fail-closed” 보호다. 데이터가 이상하면 매수를 안 하는 것은 맞다. 하지만 사용자는 화면에서 전략이 ACTIVE라고 보는데 내부적으로는 계속 BUY가 skip될 수 있다. 그래서 서비스레벨에서는 <b>READY/STALE/RECONCILING/NO_SLOT</b> 상태가 명확히 보여야 한다.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>왜 P1이라고 봤나?</h3>
+    <p>여기서 P1은 “지금 당장 모든 거래가 터지는 P0”이라는 뜻은 아니다. 현재 BUY suppress가 있어서 잘못된 신규 매수는 어느 정도 막는다. 하지만 자동매매 서비스 관점에서는 <b>전략이 ACTIVE인데 필요한 캔들이 준비되지 않아 신호가 조용히 skip되는 상태</b>가 매우 위험하다.</p>
+    <div class="grid cols3">
+      <div class="card">
+        <span class="badge bad">서비스 신뢰</span>
+        <p>사용자는 자동매매가 켜졌다고 믿는데 실제로는 데이터 미준비로 진입이 막힐 수 있다.</p>
+      </div>
+      <div class="card">
+        <span class="badge warn">운영 관측</span>
+        <p>stale 사유가 UI에 강하게 드러나지 않으면 “왜 매매가 안 됐는지” 추적이 늦어진다.</p>
+      </div>
+      <div class="card">
+        <span class="badge info">확장성</span>
+        <p>멀티 worker·appkey pool로 가면 stale/queued/rebalance gap이 더 자주 생긴다.</p>
+      </div>
+    </div>
+    <div class="note badline">
+      <p><b>P1 판정 의미</b>: 실거래 안정성에 직접 영향을 주는 핵심 보완 과제다. 잘못된 BUY는 막지만, “ACTIVE 전략의 데이터 준비 완료 보장”과 “stale 발생 시 자동 복구”가 없으면 서비스 품질과 운영 신뢰가 흔들린다.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>필요한 보정 루프</h3>
+    <p>대규모 자동매매로 가려면 ACTIVE 전환과 런타임 양쪽에 readiness/recovery 루프가 있어야 한다.</p>
+    <div class="swim">
+      <div class="lane-title">1. ACTIVE 전환</div>
+      <div class="lane"><span class="pill">code+interval 목록 산출</span><span class="pill">필요 lookback 계산</span><span class="pill">DB count/latestTs 검사</span></div>
+      <div class="lane-title">2. 부족 감지</div>
+      <div class="lane"><span class="pill hot">NO_SLOT</span><span class="pill hot">STALE_1M</span><span class="pill hot">MISSING_AGGREGATE</span></div>
+      <div class="lane-title">3. 복구 시작</div>
+      <div class="lane"><span class="pill poll">BUY_BLOCKED or RECONCILING</span><span class="pill poll">1m gap fill</span><span class="pill poll">aggregate regenerate</span></div>
+      <div class="lane-title">4. 검증</div>
+      <div class="lane"><span class="pill">latestTs fresh</span><span class="pill">lookback enough</span><span class="pill">boundary complete</span></div>
+      <div class="lane-title">5. READY</div>
+      <div class="lane"><span class="pill ws">strategy LIVE</span><span class="pill ws">BUY allowed</span><span class="pill">status UI green</span></div>
+    </div>
+    <pre><code class="language-kotlin">// 권장 구조 예시: ACTIVE 전환 전 preflight
+fun activateStrategy(strategyId: Long) {
+    val strategy = strategyRepository.findById(strategyId)
+    val readiness = candleReadinessPreflight.check(strategy)
+
+    if (!readiness.allReady) {
+        strategyRepository.markBuyBlocked(strategyId, reason = "CANDLE_RECONCILING")
+        readiness.missingJobs.forEach { job ->
+            candleRecoveryQueue.enqueue(job)
+        }
+        return
+    }
+
+    strategyRepository.enable(strategyId)
+    realtimeDemandPublisher.enter(strategy)
+}</code></pre>
+    <pre><code class="language-kotlin">// 권장 구조 예시: 런타임 stale 발견 시 복구 job 연결
+if (!readiness.ready) {
+    signalGate.suppressBuy(code, interval, readiness.reason)
+
+    candleRecoveryQueue.enqueue(
+        CandleRecoveryJob(
+            code = code,
+            interval = interval,
+            reason = readiness.reason,
+            from = readiness.latestOneMinTs,
+            to = boundaryTs,
+        ),
+    )
+}</code></pre>
+  </div>
+
+  <h2>§9. Admin UI는 400개를 어떻게 보여주나</h2>
+  <div class="card">
+    <p>가능하다. 다만 지금처럼 한 consumer의 로컬 ledger만 읽으면 안 되고, worker들이 snapshot을 올리고 UI가 전역 집계해야 한다. 여기서 “task별 가지고 있는 토픽”이라는 표현은 정확히는 <b>task별 assigned partitions + task별 보유 KIS channels</b>다.</p>
+    <div class="grid cols4">
+      <div class="card kpi"><span class="muted">Global</span><b>312 / 400</b><span>10 appkeys × 40 slots</span></div>
+      <div class="card kpi"><span class="muted">worker A-0</span><b>35 / 40</b><span>partitions [0,1,2]</span></div>
+      <div class="card kpi"><span class="muted">worker B-0</span><b>28 / 40</b><span>partitions [3,4,5]</span></div>
+      <div class="card kpi"><span class="muted">worker C-0</span><b>39 / 40</b><span>partitions [6,7,8]</span></div>
+    </div>
+    <pre><code class="language-json">{
+  "workerId": "ws-worker-a-0",
+  "appKeyId": "user-a-real",
+  "assignedPartitions": [0, 1, 2],
+  "slots": {
+    "used": 35,
+    "max": 40,
+    "byTrId": {
+      "H0UNCNT0": 25,
+      "H0UNASP0": 9,
+      "H0STCNI0": 1
+    }
+  },
+  "channels": [
+    {"trId": "H0UNCNT0", "code": "005930", "owners": ["holding:005930", "strategy:86"]},
+    {"trId": "H0UNASP0", "code": "005930", "owners": ["detail:74683223"]}
+  ]
+}</code></pre>
+  </div>
+
+  <h2>§10. 대규모 전환 키워드 한 줄 코멘트</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>키워드</th><th>한 줄 설명</th></tr></thead>
+      <tbody>
+        <tr><td><b>Kafka partition by code</b></td><td>같은 종목의 ENTER/EXIT/ tick 처리 순서를 같은 partition에 묶는 핵심 기법.</td></tr>
+        <tr><td><b>consumer group scale-out</b></td><td>partition 수만큼 worker가 병렬 처리한다. partition 1개면 worker 100개도 1개만 일한다.</td></tr>
+        <tr><td><b>worker identity</b></td><td>worker가 누구인지 안정적으로 알아야 assignment, heartbeat, revoke가 가능하다.</td></tr>
+        <tr><td><b>assignment store</b></td><td><code>appKeyId + trId + code → workerId</code>의 전역 소유권 저장소.</td></tr>
+        <tr><td><b>lease + heartbeat</b></td><td>worker 장애 시 소유권이 자동 만료되고 다른 worker가 가져갈 수 있게 하는 생명줄.</td></tr>
+        <tr><td><b>rebalance protocol</b></td><td>worker 증감·partition 이동 시 unsubscribe/resubscribe/gap-fill을 안전하게 실행하는 절차.</td></tr>
+        <tr><td><b>per-appkey quota scheduler</b></td><td>KIS appkey별 40 제한 안에서 HOLDING/PENDING_BUY/STRATEGY/DETAIL 우선순위를 계산하는 스케줄러.</td></tr>
+        <tr><td><b>global realtime status aggregation</b></td><td>각 worker의 로컬 slot 상태를 모아 전체 400/400 같은 전역 화면으로 만드는 관측 계층.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>§11. 결론</h2>
+  <div class="card">
+    <p>우리 시스템은 이미 <code>api</code>, <code>consumer</code>, <code>batch</code>로 나뉘어 있고 Kafka도 쓰고 있다. 하지만 KIS WS 구독은 아직 stateful local 구조다. 그래서 MSA 모양은 있지만, “consumer task 무한 증식으로 구독을 무한 처리”하는 분산 구독 시스템은 아니다.</p>
+    <p>대규모형으로 바꾸려면 단순히 task 개수를 늘리는 게 아니라, <b>code key 기반 Kafka sharding</b>, <b>appkey별 quota scheduler</b>, <b>assignment/lease/fencing</b>, <b>worker rebalance protocol</b>, <b>global status UI</b>를 한 세트로 설계해야 한다.</p>
+    <p class="muted small">개발자 관점의 핵심 면접 문장: stateless service는 복제하면 확장되지만, stateful external connection은 소유권과 재분배 프로토콜이 곧 확장성이다.</p>
+  </div>
+</div>
+</body>
+</html>

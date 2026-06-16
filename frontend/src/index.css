@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* magicJar 전역 기본값 */
+@layer base {
+  html {
+    /* 한국어 렌더링 최적화 */
+    -webkit-text-size-adjust: 100%;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  /* 숫자 폰트 — 주가·수량 등 등폭 표시 */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  @keyframes ai-discovery-loading {
+    0% {
+      transform: translateX(-120%);
+    }
+    50% {
+      transform: translateX(90%);
+    }
+    100% {
+      transform: translateX(320%);
+    }
+  }
+
+  .ai-discovery-loading-bar {
+    animation: ai-discovery-loading 1.8s ease-in-out infinite;
+  }
+}

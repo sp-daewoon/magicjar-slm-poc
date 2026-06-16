@@ -1,0 +1,15 @@
+# Grafana datasource auto-provision — ADR 0094 P0-OPS-2
+# Grafana 부팅 직후 Prometheus datasource 자동 등록 (수동 UI 클릭 0).
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST

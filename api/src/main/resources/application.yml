@@ -1,0 +1,247 @@
+spring:
+  profiles:
+    active: dev,real-kis  # default — mock 부팅 path 폐기 (CLAUDE.md 운영 함정 §3)
+  application:
+    name: magicjar-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/magicjar}
+    username: ${DB_USER:magicjar}
+    password: ${DB_PASSWORD:magicjar}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Flyway가 스키마 권위
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+      hibernate.format_sql: true
+    show-sql: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: magicjar-api
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  # ADR 0074 §2-2-3 Kafka 이벤트 설정 (참고용 — 권위 wire는 KafkaTopics 레지스트리, 이 블록은 미바인딩 문서값)
+  # kafka.api.evt.system.kis-key.changed.v1: KIS 키 변경 신호 (consumer WS graceful reconnect trigger)
+  # kafka.shared.evt.killswitch.engaged.v1: KillSwitch 토글 (schema 확장 — engaged:boolean)
+  kafka-topics:
+    kis-key-changed: kafka.api.evt.system.kis-key.changed.v1
+    killswitch-engaged: kafka.shared.evt.killswitch.engaged.v1
+
+  ai:
+    # Spring AI Anthropic — T-DSL 자연어 변환 helper (ADR 0026 사용자 트리거)
+    # api-key 미설정 + MAGICJAR_AI_MOCK_MODE=auto 시 MockDslHeuristic 룰 fallback (LLM 호출 0)
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      chat:
+        options:
+          model: claude-3-5-sonnet-20241022
+          temperature: 0.0  # DSL 변환은 결정론 — temperature 0 LOCK
+          max-tokens: 256
+
+server:
+  port: 8080
+  shutdown: graceful  # ADR 0045 — SIGTERM HTTP draining
+
+# ADR 0094 P0-OPS-2 — Actuator/Prometheus 노출 + Micrometer common tags.
+#   exposure.include = health, info, metrics, prometheus, loggers, env (운영 관측 SoT)
+#   show-details = when-authorized (prd 비인증 노출 차단), dev 회귀 보존 위해 always default 유지
+#   metrics.tags = 모든 metric에 application + environment 자동 부착 (Grafana label join)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus, loggers, env
+  endpoint:
+    health:
+      show-details: always   # prd 진입 시 when-authorized 권장 (ADR 0094 후속 P0-OPS-3 alert config)
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${SPRING_PROFILES_ACTIVE:dev}
+
+magicjar:
+  mode: ${MAGICJAR_MODE:MOCK}
+  allow-real: ${MAGICJAR_ALLOW_REAL:false}
+  # 지수 일봉 롤업 레짐 분류 임계치 (spec 2026-06-16 §4-4 · ADR 0126 §3-4 — MarketIndexDailyRollupService).
+  # default = spec LOCK 값. 추후 튜닝 가능(룰 기반·AI 0). HIGH_VOL 우선 > UPTREND > DOWNTREND > SIDEWAYS.
+  market-index:
+    regime:
+      high-vol-threshold-pct: ${MAGICJAR_MARKET_INDEX_REGIME_HIGH_VOL_PCT:2.5}   # range_pct ≥ 2.5% → HIGH_VOL
+      trend-threshold-pct: ${MAGICJAR_MARKET_INDEX_REGIME_TREND_PCT:0.6}         # |change_pct| ≥ 0.6% → UP/DOWNTREND
+  # 시스템 이벤트 운영 대시보드 source table retention.
+  # Kafka kafka.shared.evt.system.event.v1 은 이미 7d 이며, DB system_event 도 같은 보존 기간으로 맞춘다.
+  system-event:
+    retention:
+      enabled: ${MAGICJAR_SYSTEM_EVENT_RETENTION_ENABLED:true}
+      days: ${MAGICJAR_SYSTEM_EVENT_RETENTION_DAYS:7}
+      cleanup-cron: ${MAGICJAR_SYSTEM_EVENT_RETENTION_CLEANUP_CRON:0 20 4 * * *}
+  # 발굴 → MOCK 페이퍼 트레이딩 (ADR 0122) — 가상 자본 격리 + opt-in 승격. 실거래 결정권 0.
+  daytrade:
+    paper:
+      enabled: ${MAGICJAR_DAYTRADE_PAPER_ENABLED:true}
+      default-capital-krw: ${MAGICJAR_DAYTRADE_PAPER_DEFAULT_CAPITAL_KRW:10000000}
+      max-instances: ${MAGICJAR_DAYTRADE_PAPER_MAX_INSTANCES:10}
+  ai:
+    enabled: ${MAGICJAR_AI_ENABLED:false}
+    mock-mode: ${MAGICJAR_AI_MOCK_MODE:auto}
+    provider: ${MAGICJAR_AI_PROVIDER:anthropic}  # anthropic 한정 (T-DSL helper)
+  secret:
+    master-key: ${MAGICJAR_SECRET_MASTER_KEY:}  # 생성: openssl rand -base64 32. 부재 시 부팅 거부 (ADR 0046 §2-4)
+  market-session:
+    # KRX 영업일 캘린더 (ADR 0013 §2-2, PR-29a)
+    # true: KrxMarketSessionResolver (market_calendar DB + KIS chk-holiday)
+    # false: SimpleMarketSessionResolver (시간 기반 stub — consumer fallback)
+    enforce: ${MAGICJAR_MARKET_SESSION_ENFORCE:true}
+  dsl:
+    # ADR 0047 §2-1 static 검증 한도 (backend-core LOCK — spec §7 정합)
+    ast-depth-limit: ${MAGICJAR_DSL_AST_DEPTH_LIMIT:32}
+    node-count-limit: ${MAGICJAR_DSL_NODE_COUNT_LIMIT:10000}
+    indicator-call-limit: ${MAGICJAR_DSL_INDICATOR_CALL_LIMIT:50}
+    # ADR 0047 §2-2 runtime sandbox timeout
+    eval:
+      timeout-ms: ${MAGICJAR_DSL_EVAL_TIMEOUT_MS:100}
+      backtest-timeout-ms: ${MAGICJAR_DSL_BACKTEST_TIMEOUT_MS:1000}
+    cpu-budget-ms: ${MAGICJAR_DSL_CPU_BUDGET_MS:50}
+    # ADR 0047 §2-3 strategy-eval-pool
+    eval-pool:
+      size: ${MAGICJAR_DSL_EVAL_POOL_SIZE:4}
+      queue: ${MAGICJAR_DSL_EVAL_POOL_QUEUE:100}
+  # 분할매수(scale-in) / 분할익절 "리플레이 먼저" 활성화 게이트 (spec §8-1 · ADR 0111 §2-7)
+  # default false — scaleIn/partialExits 설정 전략의 ACTIVE 전이를 서버 검증에서 거부(SCALE_IN_NOT_ENABLED).
+  # qa 2라운드 GREEN(PR #750 S8 6/7 + PR #753 S9 7/7 fill 레이어)으로 2026-06-05 default true 영구화. rollback = ENV false 또는 본 값 false.
+  strategy:
+    scale-in:
+      enabled: ${MAGICJAR_STRATEGY_SCALE_IN_ENABLED:true}
+  # T-SC Screener 설정 (ADR 0071 §2-4 D-2)
+  screener:
+    # 옵션 영속 — true 시 screening_run + screening_match INSERT (default false = Redis cache-only)
+    persist: ${MAGICJAR_SCREENER_PERSIST:false}
+    # universe screening 전용 DSL eval timeout (ADR 0071 §2-3 C-1 LOCK)
+    eval-timeout-ms: ${MAGICJAR_SCREENER_EVAL_TIMEOUT_MS:500}
+  # T-SIM Scenario Replay Sandbox (ADR 0107)
+  # 별도 QA 메뉴에서 즉시 실행 가능하다. 안전 경계는 KIS/order 경로 미사용 + scenario_* 저장소 분리.
+  scenario-replay:
+    max-candles-per-run: ${MAGICJAR_SCENARIO_REPLAY_MAX_CANDLES:5000}
+    max-events-per-run: ${MAGICJAR_SCENARIO_REPLAY_MAX_EVENTS:20000}
+  strategy-research:
+    max-candles-per-run: ${MAGICJAR_STRATEGY_RESEARCH_MAX_CANDLES:20000}
+    ai-discovery:
+      enabled: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_ENABLED:true}
+      command: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_COMMAND:claude}
+      bridge-url: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_BRIDGE_URL:}
+      timeout-seconds: ${MAGICJAR_STRATEGY_RESEARCH_AI_DISCOVERY_TIMEOUT_SECONDS:180}
+  # ─────────────────────────────────────────────────
+  # 차트 캔들 페이지네이션 매트릭스 (ADR 0093 §3-1 LOCK)
+  #   key 매트릭스 = spec PR #609 §5 정합 — chart-curator + backend-core 공동 LOCK
+  #   timeframe별 max-pages × KIS 100건/page = max 봉 cover
+  #     1m=48(4800봉·약 1주), 3m·5m·15m·30m·90m·1h=38(3800봉),
+  #     4h=20(2000봉), 12h=12(1200봉),
+  #     1d=50(5000봉·약 20년), 1wk=20(2000봉·약 38년),
+  #     1mo=12(1200봉·약 100년), 1y=6(600봉·사실상 무제한)
+  #   누락 키는 default-max-pages(=6) fallback — 회귀 안전 (기존 hardcode 값)
+  #   max-response-limit: GET /api/symbols/{code}/candles?limit= 사용자 입력 cap
+  # ─────────────────────────────────────────────────
+  candle:
+    max-pages-by-interval:
+      "[1m]": 48
+      "[3m]": 38
+      "[5m]": 38
+      "[15m]": 38
+      "[30m]": 38
+      "[90m]": 38
+      "[1h]": 38
+      "[4h]": 20
+      "[12h]": 12
+      "[1d]": 50
+      "[1wk]": 20
+      "[1mo]": 12
+      "[1y]": 6
+    default-max-pages: 6
+    max-response-limit: 5000
+    one-minute:
+      default-lookback-trading-days: ${MAGICJAR_CANDLE_1M_DEFAULT_LOOKBACK_TRADING_DAYS:126}
+      max-lookback-trading-days: ${MAGICJAR_CANDLE_1M_MAX_LOOKBACK_TRADING_DAYS:252}
+      max-pages-per-day: ${MAGICJAR_CANDLE_1M_MAX_PAGES_PER_DAY:8}
+
+  # ─────────────────────────────────────────────────
+  # MCP 서버 (ADR 0027 — W4 R2 T-MCP Phase 1)
+  #   api-key: env MAGICJAR_MCP_API_KEY (미설정 시 MCP 전체 503 graceful refuse)
+  #   localhost-only: true LOCK (1차 보안 — X-Forwarded-For 첫 hop loopback 한정)
+  #   client-id: 1차 단일 client ("default-client" — post-MVP per-client 분리 + OAuth2)
+  # ─────────────────────────────────────────────────
+  mcp:
+    api-key: ${MAGICJAR_MCP_API_KEY:}
+    localhost-only: ${MAGICJAR_MCP_LOCALHOST_ONLY:true}
+    client-id: ${MAGICJAR_MCP_CLIENT_ID:default-client}
+
+  # P1-4 Bucket4j-Redis KIS Rate Limit (ADR 0037 → ADR 0116 Phase 2 priority별 별도 버킷 3-tier)
+  # KIS 공식 한도: 초당 10건 (계정·앱키당, EGW00201/HTTP 429 위반 시)
+  # multi-JVM(api·batch·consumer) 버킷 share. interval refill로 burst를 완화한다.
+  kis:
+    rate-limiter:
+      enabled: ${MAGICJAR_KIS_RATE_LIMIT_ENABLED:true}
+      bucket-capacity: ${MAGICJAR_KIS_RATE_LIMIT_BURST:10}        # rollback: 12·15 임시 ↑ 가능 (KIS 차단 risk 동반)
+      bucket-refill-tokens: 10
+      # ADR 0116 §2-B priority별 별도 버킷 (USER 4 / SHARED 3 / BG 3 = 합 10). 합 ≠ capacity면 단일 bucket fallback.
+      # false 시 단일 :global 버킷(capacity) 회귀 (Phase 1 안전 최소 — rollback).
+      priority-buckets-enabled: ${MAGICJAR_KIS_PRIORITY_BUCKETS_ENABLED:true}
+      bucket-user: ${MAGICJAR_KIS_BUCKET_USER:4}       # USER_PATH 1차 (주문·현재가·차트·잔고)
+      bucket-realtime-market: ${MAGICJAR_KIS_BUCKET_REALTIME_MARKET:2} # ACTIVE 전략 degraded 시세 보강
+      bucket-shared: ${MAGICJAR_KIS_BUCKET_SHARED:2}   # INGESTION 1차 (watchlist·approval) + USER_PATH fallback
+      bucket-bg: ${MAGICJAR_KIS_BUCKET_BG:2}           # BACKFILL·INGESTION_LOW 1차 (캔들 backfill·지수/섹터 cron)
+      # deprecated (ADR 0116 — priority-buckets-enabled로 일반화). 하위호환 바인딩 보존.
+      user-path-reserve-tokens: ${MAGICJAR_KIS_USER_PATH_RESERVE:3}
+      bucket-refill-period-seconds: 1
+      bucket-key: kis-rate-limit:global
+      bucket-ttl-seconds: 10
+      acquire-poll-interval-millis: 50
+      circuit-breaker-failure-rate: ${MAGICJAR_KIS_CIRCUIT_BREAKER_THRESHOLD:0.5}
+      circuit-breaker-window-seconds: 300
+      circuit-breaker-open-duration-seconds: 300
+
+# ─────────────────────────────────────────────────
+# Naver Open API (T-NEWS Phase 2 — ADR 0075 §7-5 + §7-6)
+# 미설정 시 graceful skip + log INFO (feedback_no_mock_data.md 정합)
+# 발급: https://developers.naver.com → 검색 API 권한 체크 의무
+# ─────────────────────────────────────────────────
+naver:
+  open-api:
+    client-id: ${NAVER_OPEN_API_CLIENT_ID:}       # 미설정 시 NaverNewsAdapter graceful skip
+    client-secret: ${NAVER_OPEN_API_CLIENT_SECRET:} # secretKey log 금지 (MaskingPatternLayout — ADR 0046 §2-5)
+
+
+# ─────────────────────────────────────────────────
+# 로깅 레벨 — 노이즈 차단 (v3.1.0 dogfooding hotfix)
+# Hibernate SQL DEBUG / Kafka INFO 등 너무 시끄러운 로그를 WARN 또는 INFO로
+# ─────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.apache.kafka: WARN
+    org.apache.kafka.clients.NetworkClient: ERROR  # Kafka broker 일시 끊김 INFO 노이즈 차단
+    org.springframework.kafka: WARN
+    kr.spdaewoon.magicjar: INFO

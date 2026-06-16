@@ -1,0 +1,175 @@
+{
+  "version": "1.0",
+  "updatedAt": "2026-05-24",
+  "source": "magicJar W4 T-MCP Phase 1 (ADR 0027 §2-6 — LLM 호출 0 정합)",
+  "indicators": [
+    {
+      "name": "RSI",
+      "fullName": "Relative Strength Index",
+      "category": "momentum",
+      "params": { "period": "default 14 (J. Welles Wilder)" },
+      "formula": "RSI = 100 - (100 / (1 + RS)) where RS = avg_gain(period) / avg_loss(period)",
+      "interpretation": "0~100 범위. 70 이상 과매수 · 30 이하 과매도 (Wilder 표준). 다이버전스 패턴 — 가격 신고가 + RSI 신고가 미달 시 약세 신호."
+    },
+    {
+      "name": "MACD",
+      "fullName": "Moving Average Convergence Divergence",
+      "category": "trend",
+      "params": { "fast": "default 12", "slow": "default 26", "signal": "default 9" },
+      "formula": "MACD = EMA(close, fast) - EMA(close, slow); Signal = EMA(MACD, signal); Histogram = MACD - Signal",
+      "interpretation": "MACD 가 Signal 상향 돌파 = 매수 신호 (Golden Cross). 하향 돌파 = 매도 신호 (Dead Cross). Histogram 0선 위/아래 + 다이버전스 함께 보는 것이 표준."
+    },
+    {
+      "name": "MA",
+      "fullName": "Moving Average (Simple)",
+      "category": "trend",
+      "params": { "period": "정수 (1~252)" },
+      "formula": "MA(period) = sum(close[t-period+1..t]) / period",
+      "interpretation": "추세 평활화의 기본. 단기 MA(5·20) vs 장기 MA(60·120) 교차로 추세 전환 판단. magicJar default = [5, 20, 60] (ADR 0101 TrendPreferenceDefaults)."
+    },
+    {
+      "name": "EMA",
+      "fullName": "Exponential Moving Average",
+      "category": "trend",
+      "params": { "period": "정수 (1~252)" },
+      "formula": "EMA[t] = α * close[t] + (1 - α) * EMA[t-1] where α = 2 / (period + 1)",
+      "interpretation": "최신 가격 가중. SMA 보다 반응 빠름 — 트레이딩 신호 지연 감소. 단점: noise 민감."
+    },
+    {
+      "name": "BBANDS",
+      "fullName": "Bollinger Bands",
+      "category": "volatility",
+      "params": { "period": "default 20", "stdDev": "default 2.0" },
+      "formula": "middle = SMA(close, period); upper = middle + stdDev * σ; lower = middle - stdDev * σ",
+      "interpretation": "가격이 upper 터치 + RSI 과매수 = 매도 신호 (Bollinger Bounce). 밴드 폭이 좁아진 후 확장 시작 (Bollinger Squeeze) = 추세 전환 임박."
+    },
+    {
+      "name": "ATR",
+      "fullName": "Average True Range",
+      "category": "volatility",
+      "params": { "period": "default 14 (Wilder)" },
+      "formula": "TR = max(high-low, |high-prevClose|, |low-prevClose|); ATR = EMA(TR, period)",
+      "interpretation": "변동성 측정 (방향 무관). 손절가 = entry - 2*ATR 등 risk management 표준. ATR 급등 = 변동성 폭발 (큰 거래량 동반 시 추세 시작)."
+    },
+    {
+      "name": "OBV",
+      "fullName": "On-Balance Volume",
+      "category": "volume",
+      "params": {},
+      "formula": "OBV[t] = OBV[t-1] + (close[t] > close[t-1] ? volume : (close[t] < close[t-1] ? -volume : 0))",
+      "interpretation": "가격 신고가 + OBV 신고가 = 강세 confirm. 가격 신고가 + OBV 미달 = 약세 다이버전스. 거래량 누적으로 큰손 매집/분산 추적."
+    },
+    {
+      "name": "VWAP",
+      "fullName": "Volume Weighted Average Price",
+      "category": "volume",
+      "params": { "anchor": "session 시작 (default)" },
+      "formula": "VWAP[t] = Σ(price[i] * volume[i]) / Σ(volume[i]) for i in [session_start, t]",
+      "interpretation": "기관 거래 기준선. 가격 > VWAP = bullish bias. 일중 신규 진입 = VWAP 부근 retest 후 진입이 표준."
+    },
+    {
+      "name": "STOCH",
+      "fullName": "Stochastic Oscillator",
+      "category": "momentum",
+      "params": { "k": "default 14", "d": "default 3", "smooth": "default 3" },
+      "formula": "%K = 100 * (close - lowestLow(k)) / (highestHigh(k) - lowestLow(k)); %D = SMA(%K, d)",
+      "interpretation": "0~100 범위. 80 이상 과매수 · 20 이하 과매도. %K-%D 교차 + 다이버전스 함께 사용. RSI 와 유사하지만 더 빠른 반응."
+    },
+    {
+      "name": "ADX",
+      "fullName": "Average Directional Index",
+      "category": "trend",
+      "params": { "period": "default 14 (Wilder)" },
+      "formula": "ADX = SMA(|+DI - -DI| / (+DI + -DI) * 100, period)",
+      "interpretation": "추세 강도 (방향 무관). ADX < 20 = 횡보 · 20-40 = 추세 형성 · 40+ = 강한 추세. +DI/-DI 교차로 방향 판단."
+    },
+    {
+      "name": "CCI",
+      "fullName": "Commodity Channel Index",
+      "category": "momentum",
+      "params": { "period": "default 20" },
+      "formula": "CCI = (TP - SMA(TP, period)) / (0.015 * mean_deviation) where TP = (high+low+close)/3",
+      "interpretation": "±100 이상 추세 강세 신호. ±200 극단. RSI 보다 변동폭 크지만 추세 추종에 유리."
+    },
+    {
+      "name": "WILLIAMS_R",
+      "fullName": "Williams %R",
+      "category": "momentum",
+      "params": { "period": "default 14" },
+      "formula": "%R = -100 * (highestHigh(period) - close) / (highestHigh(period) - lowestLow(period))",
+      "interpretation": "-100~0 범위. -20 이상 과매수 · -80 이하 과매도. Stochastic 과 유사하지만 더 민감."
+    },
+    {
+      "name": "MFI",
+      "fullName": "Money Flow Index",
+      "category": "volume",
+      "params": { "period": "default 14" },
+      "formula": "MFI = 100 - (100 / (1 + posMF/negMF)) where MF = TP * volume",
+      "interpretation": "volume 가중 RSI. 80 이상 과매수 · 20 이하 과매도. 거래량 동반 확인으로 RSI 보다 신뢰도 ↑."
+    },
+    {
+      "name": "ICHIMOKU",
+      "fullName": "Ichimoku Kinko Hyo",
+      "category": "trend",
+      "params": { "tenkan": "default 9", "kijun": "default 26", "senkou": "default 52" },
+      "formula": "Tenkan = (highestHigh(9) + lowestLow(9)) / 2; Kijun = (highestHigh(26) + lowestLow(26)) / 2; Senkou A = (Tenkan+Kijun)/2 shift 26; Senkou B = (highestHigh(52)+lowestLow(52))/2 shift 26",
+      "interpretation": "구름(Senkou A vs B) 상단 = 강세 · 하단 = 약세. Tenkan/Kijun 교차 = 단기 신호. 가격이 구름 위 + Tenkan>Kijun = 강한 매수."
+    },
+    {
+      "name": "PSAR",
+      "fullName": "Parabolic SAR",
+      "category": "trend",
+      "params": { "acceleration": "default 0.02", "max": "default 0.2" },
+      "formula": "SAR[t] = SAR[t-1] + AF * (EP - SAR[t-1])",
+      "interpretation": "trailing stop 표준. 점이 가격 아래 = 상승 추세, 위 = 하락 추세. 점 위치 반전 시 매매."
+    },
+    {
+      "name": "TRIX",
+      "fullName": "Triple Exponential Average",
+      "category": "momentum",
+      "params": { "period": "default 15", "signal": "default 9" },
+      "formula": "TRIX = EMA(EMA(EMA(close, period), period), period) % change",
+      "interpretation": "noise 제거 + 추세 변화율. 0선 상향 돌파 = 매수 · 하향 = 매도. Signal line 교차 추가 시 confirm."
+    },
+    {
+      "name": "ROC",
+      "fullName": "Rate of Change",
+      "category": "momentum",
+      "params": { "period": "default 12" },
+      "formula": "ROC = (close[t] - close[t-period]) / close[t-period] * 100",
+      "interpretation": "단순 모멘텀. 0선 위/아래로 강도 측정. 다이버전스 + 극단치(±10) 진입 시 mean reversion 신호."
+    },
+    {
+      "name": "DONCHIAN",
+      "fullName": "Donchian Channels",
+      "category": "volatility",
+      "params": { "period": "default 20" },
+      "formula": "upper = highestHigh(period); lower = lowestLow(period); middle = (upper+lower)/2",
+      "interpretation": "Turtle Trading 시스템 핵심. 20일 신고가 돌파 = 매수 · 20일 신저가 = 손절. Breakout 전략 표준."
+    },
+    {
+      "name": "KELTNER",
+      "fullName": "Keltner Channels",
+      "category": "volatility",
+      "params": { "period": "default 20", "atrMult": "default 2.0" },
+      "formula": "middle = EMA(close, period); upper = middle + atrMult * ATR(period); lower = middle - atrMult * ATR(period)",
+      "interpretation": "Bollinger Bands 의 ATR 버전 (volatility-based). Squeeze 전략 — Keltner 가 Bollinger 안에 들어가면 squeeze, 빠져나오면 breakout."
+    },
+    {
+      "name": "PIVOT_POINTS",
+      "fullName": "Pivot Points (Classic)",
+      "category": "support_resistance",
+      "params": {},
+      "formula": "P = (high+low+close)/3; R1 = 2*P - low; S1 = 2*P - high; R2 = P + (high-low); S2 = P - (high-low)",
+      "interpretation": "전일 데이터로 당일 지지/저항 산출. 일중 트레이딩 표준. P 위 = bullish bias · 아래 = bearish."
+    },
+    {
+      "name": "CMF",
+      "fullName": "Chaikin Money Flow",
+      "category": "volume",
+      "params": { "period": "default 20" },
+      "formula": "MFM = ((close-low) - (high-close)) / (high-low); MFV = MFM * volume; CMF = sum(MFV, period) / sum(volume, period)",
+      "interpretation": "±1 범위. +0.25 이상 강한 매집 · -0.25 이하 강한 분산. 가격 추세 vs CMF 다이버전스로 전환 예측."
+    }
+  ]
+}

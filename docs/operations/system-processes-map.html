@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>magicJar 시스템 프로세스 지도 (쉽게 보기) — 2026-06-09</title>
+<style>
+  :root{
+    --bg:#f5f7fb; --panel:#fff; --ink:#1a2230; --muted:#6b7280; --line:#e2e8f0;
+    --kis:#0b66c3; --redis:#b42318; --kafka:#7c3aed; --db:#0f766e; --stomp:#b45309;
+    --cap:#b42318; --info:#15803d; --soft:#f1f5f9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",sans-serif}
+  main{max-width:1180px;margin:0 auto;padding:30px 22px 70px}
+  header{background:linear-gradient(135deg,#fff,#eaf3ff);border:1px solid var(--line);border-radius:16px;padding:26px}
+  h1{margin:0;font-size:28px}
+  h2{margin:40px 0 6px;font-size:21px;border-left:5px solid var(--kis);padding-left:11px}
+  h3{margin:18px 0 4px;font-size:16px}
+  p{margin:7px 0}
+  .muted{color:var(--muted)}
+  .lead{font-size:15px;color:#374151}
+  code{background:#eef2f7;padding:1px 6px;border-radius:5px;font-size:13px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .tag{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--line);background:#fff}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .t-kis{color:var(--kis)} .b-kis{background:var(--kis)}
+  .t-redis{color:var(--redis)} .b-redis{background:var(--redis)}
+  .t-kafka{color:var(--kafka)} .b-kafka{background:var(--kafka)}
+  .t-db{color:var(--db)} .b-db{background:var(--db)}
+  .t-stomp{color:var(--stomp)} .b-stomp{background:var(--stomp)}
+  .cap{color:var(--cap);font-weight:800}
+  /* 타임라인 */
+  .tl{margin-top:16px;border-left:3px solid var(--line);padding-left:0}
+  .slot{position:relative;padding:11px 0 11px 86px;border-bottom:1px dashed var(--line)}
+  .slot:last-child{border-bottom:0}
+  .time{position:absolute;left:0;top:11px;width:74px;text-align:right;font-weight:800;font-size:13px;color:var(--kis)}
+  .slot b{font-size:15px}
+  .slot .who{color:var(--muted);font-size:12.5px;margin-left:6px}
+  .slot .what{display:block;margin-top:2px;color:#374151;font-size:13.5px}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;background:var(--soft);color:#475569;margin-right:5px}
+  .pill.cap{background:#fff0ef;color:var(--cap)}
+  .pill.batch{background:#eef9f4;color:var(--db)}
+  .pill.new{background:#fff7e6;color:var(--stomp)}
+  table{width:100%;border-collapse:collapse;margin-top:12px;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;font-size:13.5px}
+  th{background:#f8fafc;font-size:12.5px;color:#334155}
+  tr:last-child td{border-bottom:0}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:14px}
+  .flow{font-size:14px;line-height:2;color:#374151}
+  .flow b{color:var(--ink)}
+  .arrow{color:var(--muted);margin:0 6px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .note{background:#fff7e6;border:1px solid #f1d19b;border-radius:10px;padding:12px 15px;margin-top:14px;font-size:13.5px}
+  .ok{background:#eaf7ee;border:1px solid #b7e2c1;border-radius:10px;padding:12px 15px;margin-top:14px;font-size:13.5px}
+  footer{margin-top:46px;color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding-top:14px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="legend" style="margin-bottom:10px">
+    <span class="tag t-stomp">OPERATIONS</span>
+    <span class="tag">2026-06-09 갱신</span>
+    <span class="tag">쉽게 보는 버전</span>
+  </div>
+  <h1>magicJar 시스템 프로세스 지도</h1>
+  <p class="lead">화면에 안 보여도 백엔드에서 돌아가는 모든 자동 작업을 <b>"언제 / 무엇이 / 무엇을 쓰는지"</b> 한눈에. 시각 기반(cron)·상시 반복(초·분)·이벤트 기반·부팅 1회로 나눠 정리했다.</p>
+  <div class="legend">
+    <span class="tag"><span class="dot b-kis"></span>KIS API</span>
+    <span class="tag"><span class="dot b-redis"></span>Redis</span>
+    <span class="tag"><span class="dot b-kafka"></span>Kafka</span>
+    <span class="tag"><span class="dot b-db"></span>DB(Postgres)</span>
+    <span class="tag"><span class="dot b-stomp"></span>STOMP(화면)</span>
+    <span class="tag cap">● 자본/주문 접촉</span>
+  </div>
+  <p class="muted" style="margin-top:12px">모듈 3개: <b class="t-kis">api</b>(REST·화면 fanout·뉴스/공시) · <b class="t-db">batch</b>(기준정보·지수·성과) · <b class="t-kafka">consumer</b>(실시간 시세·캔들·신호·주문·정합). 빌드 산출물 제외 코드 직접 스캔.</p>
+</header>
+
+<!-- ===================== 1. 하루 타임라인 ===================== -->
+<h2>1. 하루 타임라인 — 정해진 시각에 1회</h2>
+<p class="muted">cron 기반. 모두 <code>Asia/Seoul</code>. 대부분 KRX 영업일에만(주말·휴장 자동 skip).</p>
+<div class="tl">
+  <div class="slot"><span class="time">00:30</span><b>일일 성과 집계</b><span class="who">DailyPerformanceJob · batch</span>
+    <span class="what"><span class="pill batch">batch</span>전일(T-1) 체결 리플레이 → 손익·수익률·MDD 계산 → <span class="t-db">pnl_daily·performance_summary</span> 저장 + 캐시 갱신. <span class="muted">KIS 호출 0.</span></span></div>
+  <div class="slot"><span class="time">03:00</span><b>장 캘린더 동기화</b><span class="who">MarketCalendarSyncJob · batch</span>
+    <span class="what"><span class="pill batch">batch</span>KRX 휴장일·영업일 <span class="t-kis">KIS</span> 조회 → <span class="t-db">market_calendar</span> 갱신. 다른 잡들의 "영업일 판정" 기준.</span></div>
+  <div class="slot"><span class="time">03:00 / 03:30</span><b>자동 백업</b><span class="who">pg-dump-daily · redis-snapshot · cron</span>
+    <span class="what"><span class="pill">백업</span>Postgres 전체 dump(7일 회전) + Redis 스냅샷(3일). → <code>_workspace/backups/</code>. <span class="muted">복원: pg-restore.sh (가이드 참고).</span></span></div>
+  <div class="slot"><span class="time">06:00</span><b>해외 지수 일봉</b><span class="who">MarketIndexScheduler · batch · 화~토</span>
+    <span class="what"><span class="pill batch">batch</span>미국장 마감 후 해외 지수 일봉 <span class="t-kis">KIS</span> → <span class="t-db">market_index</span>.</span></div>
+  <div class="slot"><span class="time">06:05~19:00</span><b>종목 마스터 동기화 (13회)</b><span class="who">InstrumentMasterSyncScheduler · batch</span>
+    <span class="what"><span class="pill batch">batch</span>06:05·07:00·07:40·08:00·08:50·09:51·11:00·17:15·17:35·18:00·18:15·18:35·19:00 — 종목명·상태·거래정지 여부 <span class="t-kis">KIS</span> → <span class="t-db">instrument</span> (ADR 0039 LOCK).</span></div>
+  <div class="slot"><span class="time">09:30</span><b>기업행위 동기화</b><span class="who">CorpActionSyncJob · batch</span>
+    <span class="what"><span class="pill batch">batch</span>배당·분할·합병·증자 <span class="t-kis">KIS</span>+DART → <span class="t-db">corp_action</span> → <span class="t-kafka">corp_action.applied</span> (수정주가 소급).</span></div>
+  <div class="slot"><span class="time">09:00~15:30</span><b>장중 지수 실시간 (매분)</b><span class="who">MarketIndexScheduler · batch</span>
+    <span class="what"><span class="pill batch">batch</span>분 단위 시장지수 <span class="t-kis">KIS</span> → <span class="t-db">market_index</span>.</span></div>
+  <div class="slot"><span class="time">16:00 / 18:00</span><b>시간외 단일가 구독</b><span class="who">OvertimeSinglePriceSubscriber · consumer</span>
+    <span class="what">16:00 시간외 단일가(H0STOUP0) <span class="t-kis">KIS WS</span> 구독 → 18:00 해제.</span></div>
+  <div class="slot"><span class="time">16:30</span><b>국내 지수 일봉</b><span class="who">MarketIndexScheduler · batch</span>
+    <span class="what"><span class="pill batch">batch</span>정규장 마감 후 국내 지수 일봉 <span class="t-kis">KIS</span> → <span class="t-db">market_index</span>.</span></div>
+  <div class="slot"><span class="time">18:00</span><b>stale 캔들 감지·복구</b><span class="who">LastCandleAtMonitor · consumer</span>
+    <span class="what">watchlist/보유 종목 일봉·분봉이 오래됐는지 검사 → 부족분 cold-start/backfill 트리거 + Slack 알림. <span class="muted">(managed 종목만)</span></span></div>
+  <div class="slot"><span class="time">20:10</span><b>당일 일봉 마감 → DB 영속</b><span class="who">DailyCloseFinalizer · consumer</span>
+    <span class="what">장중 <span class="t-redis">Redis</span>에 쌓인 오늘 1d 봉을 <span class="t-db">DB</span>로 확정 + 4h·12h 합산봉 생성 → <span class="t-kafka">candle.closed</span>. <span class="muted">(managed 종목만)</span></span></div>
+  <div class="slot"><span class="time">20:05 / 08:05</span><b>전종목 today 일봉 snapshot ★신규</b><span class="who">MarketDailyNightlySnapshotScheduler · consumer</span>
+    <span class="what"><span class="pill new">NEW 2026-06-09</span>보통주 <b>전종목(~2,517)</b> 오늘 종가를 멀티시세(J채널)로 ~84콜 받아 <span class="t-db">1d 봉 upsert(DO UPDATE)</span>. 비-watchlist 종목까지 매일 자동 전진. <span class="muted">ADR 0118 R2 / PR #849.</span></span></div>
+</div>
+<div class="ok"><b>당일 봉이 채워지는 3중 흐름</b> — ① 장중 <span class="t-kis">KIS WS 틱</span>이 <span class="t-redis">Redis</span> 진행봉에 실시간 누적 → ② <b>20:05</b> 전종목 공식 종가 upsert(권위) → ③ <b>20:10</b> managed 종목은 없을 때만 DB 확정(DO NOTHING). 다음 영업일 <b>08:05</b>에 직전 영업일을 한 번 더 재확정한다.</div>
+
+<!-- ===================== 2. 상시 반복 루프 ===================== -->
+<h2>2. 상시 반복 — 초·분 단위로 계속</h2>
+<p class="muted">고정 주기(fixedRate/fixedDelay). 장 시간·구독 여부에 따라 실제 작업량은 달라짐.</p>
+<table>
+  <thead><tr><th>주기</th><th>이름 · 모듈</th><th>하는 일</th><th>쓰는 것</th><th>자본</th></tr></thead>
+  <tbody>
+    <tr><td><b>매분 0초</b></td><td>TickToMinuteAggregator · consumer</td><td>WS 틱 → 1분봉 마감 → 상위 봉(3m~12h) 합산</td><td><span class="t-redis">Redis</span> <span class="t-db">DB</span> <span class="t-kafka">Kafka</span></td><td></td></tr>
+    <tr><td><b>매분</b></td><td>WatchlistIngestionWorker · consumer</td><td>장 세션(정규/야간/주말) 변경 감지 → 구독 정책 전환</td><td><span class="t-kis">KIS WS</span></td><td></td></tr>
+    <tr><td><b>5초</b></td><td>WatchlistPollingWorker · consumer</td><td>WS 슬롯 밀린 종목 REST 폴링 fallback</td><td><span class="t-kis">KIS</span> <span class="t-redis">Redis</span> <span class="t-db">DB</span></td><td></td></tr>
+    <tr><td><b>5초</b></td><td>EntryTimeoutCancelWorker · consumer</td><td>미체결 진입(LIMIT) 15초 타임아웃 → 자동 취소</td><td><span class="t-kis">KIS</span> <span class="t-db">DB</span></td><td class="cap">●</td></tr>
+    <tr><td><b>5초</b></td><td>OrderOutboxPublisherWorker · consumer</td><td>주문 이벤트 Kafka 재발행(실패 시 KillSwitch+P0 알림)</td><td><span class="t-db">DB</span> <span class="t-kafka">Kafka</span></td><td class="cap">●</td></tr>
+    <tr><td><b>10초</b></td><td>TickFallbackEmitter · consumer</td><td>캐시 stale 시 fallback 틱 발행(장 마감 시 skip)</td><td><span class="t-redis">Redis</span> <span class="t-kafka">Kafka</span></td><td></td></tr>
+    <tr><td><b>10초</b></td><td>KisWebSocketBridge heartbeat · consumer</td><td>WS 무신호 감지(정규장 30s/외 60s) → 자동 재연결</td><td><span class="t-kis">KIS WS</span></td><td></td></tr>
+    <tr><td><b>60초</b></td><td>OrderReconciliationWorker · consumer</td><td>PENDING 주문 KIS 재조회 대조 → 상태 확정(체결통보 누락 안전망)</td><td><span class="t-kis">KIS</span> <span class="t-db">DB</span></td><td class="cap">●</td></tr>
+    <tr><td><b>60초</b></td><td>HoldingPositionIndex · consumer</td><td>보유 종목 인메모리 인덱스 갱신(손절 watcher 성능)</td><td><span class="t-db">DB</span></td><td></td></tr>
+    <tr><td><b>60초</b></td><td>HoldingDemandRegistrar · consumer</td><td>보유 종목 WS 구독 보장(청산 재료 끊김 방지)</td><td><span class="t-kis">KIS WS</span> <span class="t-redis">Redis</span></td><td></td></tr>
+    <tr><td><b>60초</b></td><td>RealtimeSubscriptionRouter · consumer</td><td>실시간 가격 구독 TTL 만료 정리(DETAIL/STRATEGY/HOLDING owner별)</td><td><span class="t-kis">KIS WS</span></td><td></td></tr>
+    <tr><td><b>60초</b></td><td>OrderbookSubscriptionRouter · consumer</td><td>호가 구독 5분 idle 자동 해제(LRU 10슬롯)</td><td><span class="t-kis">KIS WS</span></td><td></td></tr>
+    <tr><td><b>120초</b></td><td>StuckAckExecutionResyncWorker · consumer</td><td>ACK 후 체결통보 180초 정체 → KIS 재조회 복구</td><td><span class="t-kis">KIS</span> <span class="t-db">DB</span></td><td class="cap">●</td></tr>
+    <tr><td><b>5분</b></td><td>NotificationOutboxRetryWorker · consumer</td><td>Slack 알림 실패분 재시도(최대 5회)</td><td><span class="t-db">DB</span></td><td></td></tr>
+    <tr><td><b>5분(장중)</b></td><td>BalanceReconcileJob · consumer</td><td>계좌 잔고·주문 KIS 재조회 대조(drift→KillSwitch)</td><td><span class="t-kis">KIS</span> <span class="t-db">DB</span></td><td class="cap">●</td></tr>
+    <tr><td><b>60초</b></td><td>news/disclosure 폴링 · api</td><td>네이버 뉴스(분당 17건)·DART 공시 1분 폴링</td><td><span class="t-kis">외부</span> <span class="t-db">DB</span> <span class="t-kafka">Kafka</span></td><td></td></tr>
+  </tbody>
+</table>
+
+<!-- ===================== 3. 실시간 이벤트 흐름 ===================== -->
+<h2>3. 실시간 이벤트 흐름 — 시세가 주문이 되기까지</h2>
+<p class="muted">Kafka 토픽으로 연결된 파이프라인. 각 단계는 독립 리스너가 소비.</p>
+<div class="card">
+  <div class="flow">
+    <b class="t-kis">KIS WS 틱</b> <span class="arrow">→</span> <span class="t-redis">Redis 진행봉</span> + <b class="t-kafka">market.tick</b>
+    <span class="arrow">→</span> <b>1분봉 마감</b>(TickToMinute) <span class="arrow">→</span> <b class="t-kafka">candle.{1m~12h}.closed</b>
+    <span class="arrow">→</span> <b>전략 평가</b>(BoundaryClosing→SignalGenerator) <span class="arrow">→</span> <b class="t-kafka">signal.generated</b>
+    <br>
+    <span class="arrow">→</span> <b>리스크 게이트</b>(SignalGenerated → RiskGateway)
+    <span class="arrow">→</span> 통과 시 <b class="t-kafka">order.intent</b> <span class="arrow">→</span> <b class="cap">주문 실행</b>(OrderRouter → <span class="t-kis">KIS 주문</span>)
+    <span class="arrow">→</span> <b class="t-kafka">order.requested/filled/rejected</b>
+    <br>
+    <span class="arrow">→</span> 체결 시 <b>자동 익절 선주문</b>(AutoExit) · <b>손절 감시</b>(StopLossTickWatcher, 틱 기반 안전망 <span class="cap">●</span>)
+    <span class="arrow">→</span> 화면으로 <b class="t-stomp">STOMP fanout</b>
+  </div>
+</div>
+<div class="note"><b>자본에 닿는 핵심 경로</b> — <span class="cap">주문 실행(OrderRouter)</span>·<span class="cap">리스크 게이트</span>·<span class="cap">자동 익절/손절</span>·<span class="cap">정합 워커들</span>·<span class="cap">outbox+KillSwitch</span>. 3중 게이트(거래모드·KillSwitch·장시간) + 멱등키 + KIS 동기로 보호. 나머지(시세·캔들·뉴스·구독)는 정보 수집·표시 전용.</div>
+
+<!-- ===================== 4. 부팅 시 ===================== -->
+<h2>4. 부팅 시 1회 — 컨테이너 시작될 때</h2>
+<div class="grid2">
+  <div class="card"><h3 class="t-kafka">consumer</h3>
+    <p class="flow"><b>RedisCandleTodayReset</b> → 오늘 라이브 봉 키 초기화<br>
+    <b>PositionBootstrap</b> → KIS 잔고 조회 → 보유 동기화<br>
+    <b>CandleBootstrap</b> → managed 종목 캔들 공백 감지 → cold-start<br>
+    <span class="muted">※ <code>magicjar.candle.bootstrap.enabled=false</code> kill-switch로 차단 가능(점검/마이그레이션 시). PR #847</span><br>
+    <b>WatchlistIngestion</b> → watchlist WS 구독 수립<br>
+    <b>KisExecutionBackfill</b> → 당일 체결 KIS 동기(누락 복구)</p>
+  </div>
+  <div class="card"><h3 class="t-db">batch</h3>
+    <p class="flow"><b>InstrumentSeed / MarketCalendarSeed</b> → 비어있으면 시드 적재<br>
+    <span class="muted">이후는 위 타임라인의 cron으로 운영.</span></p>
+    <h3 class="t-kis" style="margin-top:14px">api</h3>
+    <p class="flow">REST·WebSocket(STOMP) 서버 기동. Kafka→화면 fanout 리스너 등록. 별도 부팅 배치 없음.</p>
+  </div>
+</div>
+
+<!-- ===================== 5. 전종목 일봉 3자 분업 ===================== -->
+<h2>5. 전종목 일봉을 누가 채우나 — 3자 분업</h2>
+<table>
+  <thead><tr><th>주체</th><th>언제</th><th>범위</th><th>무엇을</th><th>방식</th></tr></thead>
+  <tbody>
+    <tr><td><b>R2 저녁/장전 snapshot</b> ★</td><td>매일 20:05 / 08:05</td><td>전종목 ~2,517</td><td>오늘 1봉 / 직전 영업일 1봉</td><td>멀티시세(J) → upsert(DO UPDATE) <span class="muted">PR #849</span></td></tr>
+    <tr><td><b>DailyCloseFinalizer</b></td><td>매일 20:10</td><td>managed(watchlist·보유 등)</td><td>오늘 1봉</td><td>Redis 집계 → DB 확정. R2가 먼저 성공하면 DO NOTHING으로 보존</td></tr>
+    <tr><td><b>R-BF backfill 캠페인</b></td><td>수동(admin)</td><td>전종목</td><td>과거 10년</td><td>일봉 REST(J) backfill. 며칠 down 시 누락 catch-up</td></tr>
+  </tbody>
+</table>
+<div class="ok"><b>2026-06-09 완료</b> — 일봉 채널을 <code>UN/NX</code>(KIS측 2/11 동결 결함)에서 <b>J(KRX 본시장) 단일</b>로 정정(#844·#846) 후, R-BF로 전종목 10년 일봉 재구축(2,467/2,517 내부 갭 0 검증). 이후 R2(#849)가 매일 20:05 전종목 today 봉을 자동 전진하고 08:05에 직전 영업일을 재확정한다. 백업 <code>2026-06-09.dump</code>(171MB)가 복구 기준점.</div>
+
+<footer>
+  코드 직접 스캔: <code>@Scheduled</code>·<code>@KafkaListener</code>·<code>ApplicationRunner</code>·<code>Executor</code>·KIS WS. 실제 활성 여부는 프로파일/ENV/구독 상태에 따라 달라질 수 있다. 상세 카드형 인벤토리는 <a href="background-process-inventory.html">background-process-inventory.html</a> 참고. · 2026-06-09 · orchestrator
+</footer>
+</main>
+</body>
+</html>

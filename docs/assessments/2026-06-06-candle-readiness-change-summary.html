@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>캔들 Readiness 변경 요약</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #111827;
+      --panel-2: #0f172a;
+      --border: #243044;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --good: #34d399;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+      --info: #60a5fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.65;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      background: #0f172a;
+      padding: 36px 24px 26px;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 18px;
+    }
+    h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #f8fafc;
+    }
+    p { margin: 0 0 12px; }
+    code {
+      border: 1px solid #334155;
+      border-radius: 4px;
+      background: #020617;
+      padding: 1px 5px;
+      color: #bfdbfe;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #020617;
+    }
+    th,
+    td {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      color: #cbd5e1;
+      background: #111827;
+      font-weight: 700;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .subtitle {
+      margin-top: 8px;
+      max-width: 920px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .card,
+    .callout {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 18px;
+    }
+    .card .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .card .value {
+      margin-top: 6px;
+      font-size: 22px;
+      font-weight: 800;
+    }
+    .card .hint {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .callout {
+      margin-bottom: 18px;
+      background: var(--panel-2);
+    }
+    .callout.warn { border-color: #92400e; }
+    .callout.good { border-color: #065f46; }
+    .callout.info { border-color: #1d4ed8; }
+    .badge {
+      display: inline-block;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.good { border-color: #047857; color: var(--good); }
+    .badge.warn { border-color: #92400e; color: var(--warn); }
+    .badge.bad { border-color: #9f1239; color: var(--bad); }
+    .badge.info { border-color: #1d4ed8; color: var(--info); }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .before,
+    .after {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      background: #020617;
+    }
+    .before { border-color: #7f1d1d; }
+    .after { border-color: #065f46; }
+    ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    li { margin: 4px 0; }
+    @media (max-width: 900px) {
+      .grid,
+      .grid.two,
+      .compare { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>캔들 Readiness 변경 요약</h1>
+      <p class="subtitle">
+        commit <code>77d3a074 feat: tighten candle readiness workflow</code>가 기존 시스템을 어떻게 바꿨는지 정리한 설명서입니다.
+        이 문서는 정책 결정서가 아니라, 이미 적용된 변경의 범위와 의미를 투명하게 보여주기 위한 기록입니다.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section class="callout warn">
+      <h2>먼저 짚고 갈 점</h2>
+      <p>
+        이번 건은 원래 “캔들 정책을 어떻게 가져갈지 의견을 듣는” 흐름이었는데,
+        구현까지 먼저 진행됐습니다. 그래서 이 문서는 무엇이 실제로 바뀌었고 무엇은 아직 결정되지 않았는지 분리해서 보여줍니다.
+      </p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <div class="label">커밋</div>
+        <div class="value">77d3a074</div>
+        <div class="hint">candle readiness workflow</div>
+      </div>
+      <div class="card">
+        <div class="label">DB 마이그레이션</div>
+        <div class="value">V69</div>
+        <div class="hint">중복 candle 인덱스 제거</div>
+      </div>
+      <div class="card">
+        <div class="label">화면 영향</div>
+        <div class="value">AI 후보 카드</div>
+        <div class="hint">캔들 수 표시, 0개 선택 차단</div>
+      </div>
+      <div class="card">
+        <div class="label">데이터 삭제</div>
+        <div class="value">없음</div>
+        <div class="hint">candle row는 삭제하지 않음</div>
+      </div>
+    </section>
+
+    <section class="callout info">
+      <h2>한 줄 요약</h2>
+      <p>
+        AI가 HLB 같은 종목을 찾아왔을 때, 이제 “종목 마스터에는 매칭됐지만 현재 선택한 5분봉 기간에는 캔들이 0개”라는 상태를
+        카드에서 바로 보여줍니다. 그리고 0개 후보는 리서치 대상으로 선택하지 못하게 막았습니다.
+      </p>
+      <p>
+        동시에 전략 평가·실시간 신호·스크리너의 캔들 조회는 전체 fetch 후 자르기에서 DB 최신 N개 조회로 바뀌었습니다.
+      </p>
+    </section>
+
+    <section class="callout">
+      <h2>1. AI 종목발굴 후보 카드</h2>
+      <div class="compare">
+        <div class="before">
+          <h3>기존</h3>
+          <ul>
+            <li>AI 후보가 종목 마스터에 매칭되면 바로 <code>선택</code> 가능했습니다.</li>
+            <li>선택 후 리서치를 눌러야 캔들 0개 경고를 봤습니다.</li>
+            <li>HLB처럼 “찾긴 찾았는데 캔들이 없음” 상태가 카드에서는 드러나지 않았습니다.</li>
+          </ul>
+        </div>
+        <div class="after">
+          <h3>변경 후</h3>
+          <ul>
+            <li>AI 발굴 요청에 현재 리서치 조건 <code>interval</code>, <code>from</code>, <code>to</code>가 같이 전송됩니다.</li>
+            <li>API가 후보별 <code>candleCount</code>, <code>hasResearchCandles</code>를 계산해 반환합니다.</li>
+            <li>카드에 <code>캔들 N</code> 또는 <code>캔들 없음</code> 배지를 표시합니다.</li>
+            <li><code>candleCount = 0</code>이면 <code>선택</code> 버튼이 비활성화됩니다.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="callout">
+      <h2>2. 캔들 조회 방식</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>경로</th>
+            <th>기존</th>
+            <th>변경 후</th>
+            <th>의미</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>전략 단건 평가</td>
+            <td><code>findByCodeAndInterval(...).takeLast(N)</code></td>
+            <td><code>findLatestByCodeAndInterval(..., N)</code></td>
+            <td>전체 시계열 대신 DB에서 최신 N개만 조회합니다.</td>
+          </tr>
+          <tr>
+            <td>실시간 신호 평가</td>
+            <td>전체 조회 후 <code>boundaryTs</code> 이하 필터링</td>
+            <td><code>ts &lt; boundaryTs</code> 조건으로 최신 N개 조회</td>
+            <td>boundary candle 중복을 피하고 읽는 row 수를 줄입니다.</td>
+          </tr>
+          <tr>
+            <td>스크리너</td>
+            <td>종목마다 전체 캔들 조회</td>
+            <td><code>max(lookback, minCandles)</code>만 최신 조회</td>
+            <td>유니버스가 커질 때 DB I/O가 줄어듭니다.</td>
+          </tr>
+          <tr>
+            <td>합산봉 재생성</td>
+            <td>1m 전체 조회</td>
+            <td>그대로 유지</td>
+            <td>3m·5m 등 합산봉 재생성은 전체 1m이 필요해서 의도적으로 유지했습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="callout">
+      <h2>3. DB 인덱스</h2>
+      <div class="compare">
+        <div class="before">
+          <h3>기존</h3>
+          <ul>
+            <li><code>idx_candle_code_interval_ts</code>가 있었습니다.</li>
+            <li><code>idx_candle_code_interval_ts_v8</code>도 같은 형태로 있었습니다.</li>
+            <li><code>uq_candle_code_interval_ts</code>는 중복 방지와 upsert에 필요했습니다.</li>
+          </ul>
+        </div>
+        <div class="after">
+          <h3>변경 후</h3>
+          <ul>
+            <li><code>idx_candle_code_interval_ts</code>만 V69로 제거했습니다.</li>
+            <li><code>idx_candle_code_interval_ts_v8</code>는 최신 조회용으로 남겼습니다.</li>
+            <li><code>uq_candle_code_interval_ts</code>는 upsert와 유니크 보장을 위해 남겼습니다.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="muted small">
+        적용 확인: Flyway V69 성공. 현재 남은 candle 관련 인덱스는
+        <code>idx_candle_code_interval_ts_v8</code>, <code>uq_candle_code_interval_ts</code>입니다.
+      </p>
+    </section>
+
+    <section class="grid two">
+      <div class="card">
+        <h2>DB 크기 변화</h2>
+        <table>
+          <thead>
+            <tr><th>항목</th><th>이전 점검값</th><th>적용 후 확인값</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>candle total</td><td>849 MB</td><td>719 MB</td></tr>
+            <tr><td>candle heap</td><td>288 MB</td><td>288 MB</td></tr>
+            <tr><td>candle indexes</td><td>561 MB</td><td>415 MB</td></tr>
+          </tbody>
+        </table>
+        <p class="muted small">
+          row 삭제가 아니라 중복 인덱스 제거 효과입니다. 적용 후에도 consumer가 계속 동작하면서 크기는 약간 변동될 수 있습니다.
+        </p>
+      </div>
+      <div class="card">
+        <h2>정책 문서 추가</h2>
+        <p>
+          별도 문서 <code>2026-06-06-candle-operating-policy-options.md</code>를 추가했습니다.
+          이 문서는 “전체 종목 일봉 + 관리 유니버스 intraday”를 추천안으로 설명하지만,
+          실제 retention cleanup이나 전체 종목 일봉 수집 정책은 아직 구현하지 않았습니다.
+        </p>
+      </div>
+    </section>
+
+    <section class="callout good">
+      <h2>바뀌지 않은 것</h2>
+      <ul>
+        <li>기존 candle row는 삭제하지 않았습니다.</li>
+        <li>모든 종목 1분봉 수집 정책을 켜지 않았습니다.</li>
+        <li>캔들 retention cleanup 스케줄러는 아직 만들지 않았습니다.</li>
+        <li>AI 후보에서 바로 캔들 수집하는 버튼은 아직 만들지 않았습니다.</li>
+        <li>자동매매 주문·포지션·실거래 로직은 바꾸지 않았습니다.</li>
+        <li>합산봉 생성 정책 자체는 바꾸지 않았습니다. 1m 원천 + precomputed aggregate 방향은 유지입니다.</li>
+      </ul>
+    </section>
+
+    <section class="callout">
+      <h2>되돌릴 수 있는 범위</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>항목</th>
+            <th>되돌리기 난이도</th>
+            <th>설명</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>AI 카드의 캔들 배지·선택 차단</td>
+            <td><span class="badge good">낮음</span></td>
+            <td>프론트와 DTO/API 보강이라 되돌리기 쉽습니다.</td>
+          </tr>
+          <tr>
+            <td>최신 N개 조회 경로</td>
+            <td><span class="badge warn">중간</span></td>
+            <td>성능 개선 목적이라 유지 권장입니다. 동작 의미는 기존 lookback과 같습니다.</td>
+          </tr>
+          <tr>
+            <td>중복 인덱스 제거 V69</td>
+            <td><span class="badge warn">중간</span></td>
+            <td>필요하면 인덱스를 다시 만들 수 있지만, 현재는 중복이라 복구 필요성은 낮습니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="callout warn">
+      <h2>아직 결정해야 하는 것</h2>
+      <ul>
+        <li>AI가 찾은 후보에 캔들이 없을 때, 사용자가 버튼 하나로 수집 큐를 넣을지.</li>
+        <li>전체 종목은 일봉만 들고 갈지, 거래대금 상위 일부는 분봉까지 자동 편입할지.</li>
+        <li>1m, 3m, 5m, 15m 이상 interval별 retention 기간을 어떻게 확정할지.</li>
+        <li>캔들 테이블이 몇 GB 이상이면 파티셔닝 또는 별도 저장소를 검토할지.</li>
+      </ul>
+    </section>
+
+    <section class="callout info">
+      <h2>내가 추천하는 다음 순서</h2>
+      <p>
+        당장은 이번 변경을 “후보가 리서치 가능한지 보여주는 안전장치”로 보고 유지해도 괜찮습니다.
+        대신 다음 구현은 바로 들어가지 말고, 먼저 위의 네 가지 정책 결정부터 같이 잡는 게 맞습니다.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar DB 사용·경합부 전수 감사 - 2026-06-06</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 54px; }
+    header {
+      display: grid;
+      gap: 14px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .score { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+    .score strong { font-size: 34px; line-height: 1; }
+    .bar { height: 10px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #e8edf4; }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .okbar { background: var(--ok); }
+    .warnbar { background: var(--warn); }
+    .badbar { background: var(--bad); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 9px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    pre {
+      margin: 12px 0 0; padding: 14px; overflow-x: auto;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: #0f172a; color: #dbe7ff; font-size: 13px; line-height: 1.6;
+    }
+    .hl-bad { color: #fda4a4; font-weight: 700; }
+    .hl-ok { color: #86efac; font-weight: 700; }
+    .kfig { font-size: 26px; font-weight: 800; margin-top: 6px; }
+    .kfig small { font-size: 13px; font-weight: 500; color: var(--muted); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <span class="badge info">ASSESSMENT · db-usage-contention-audit · 첫 발행</span>
+      <span class="badge warn">실매매 전 선제 점검</span>
+    </div>
+    <h1>magicJar DB 사용·경합부 전수 감사</h1>
+    <p class="muted">발행일 2026-06-06 · 측정 대상 <code>magicjar-postgres</code> (postgres:16-alpine, Up 5 days) · Flyway V68 · 테이블 55개 · 코드 전수 탐색(Explore) + pg_stat 실측 병행</p>
+    <p><b>핵심 결론</b> — 자동매매 용량의 1%도 쓰지 않은 현재, DB 973MB 중 <b>87%가 candle</b>이고 그중 <b>561MB(66%)가 인덱스</b>이며, 인덱스의 60%가 <b>중복/사장 상태</b>. 실매매 확장 시 경합은 주문 테이블이 아니라 <b>candle의 쓰기 증폭</b>(중복 인덱스 × upsert 재적재 × row-by-row insert)에서 먼저 온다. 자본 경로(order/outbox)는 멱등·락 설계가 이미 견고하다.</p>
+  </header>
+
+  <!-- §1 종합 스코어 -->
+  <h2>§1. 종합 판정</h2>
+  <div class="grid">
+    <div class="card span-3">
+      <h3>자본 경로 안전성</h3>
+      <div class="score"><strong>92</strong><span class="muted">/100</span><span class="badge ok">견고</span></div>
+      <div class="bar"><span class="okbar" style="width:92%"></span></div>
+      <p class="muted">SETNX+UQ 이중 멱등, FOR UPDATE SKIP LOCKED, FAILED 0건</p>
+    </div>
+    <div class="card span-3">
+      <h3>candle 저장 효율</h3>
+      <div class="score"><strong>41</strong><span class="muted">/100</span><span class="badge bad">중복 인덱스</span></div>
+      <div class="bar"><span class="badbar" style="width:41%"></span></div>
+      <p class="muted">인덱스 4개 중 1개 scan 0회, 2개 정의 동일 — 쓰기 증폭 주범</p>
+    </div>
+    <div class="card span-3">
+      <h3>Retention 집행</h3>
+      <div class="score"><strong>35</strong><span class="muted">/100</span><span class="badge bad">미집행 4종</span></div>
+      <div class="bar"><span class="badbar" style="width:35%"></span></div>
+      <p class="muted">stomp 7일·index snapshot 90일 설계만 존재, cleanup cron 0건</p>
+    </div>
+    <div class="card span-3">
+      <h3>스케일 준비도</h3>
+      <div class="score"><strong>58</strong><span class="muted">/100</span><span class="badge warn">조건부</span></div>
+      <div class="bar"><span class="warnbar" style="width:58%"></span></div>
+      <p class="muted">유니버스 200종목 확장 시 candle 월 ~500만 행 — 선행 조치 필요</p>
+    </div>
+  </div>
+
+  <!-- §2 전체 개요 -->
+  <h2>§2. DB 전체 개요 (실측)</h2>
+  <div class="grid">
+    <div class="card span-3"><h3>DB 총 크기</h3><div class="kfig">973 MB</div></div>
+    <div class="card span-3"><h3>candle 비중</h3><div class="kfig">849 MB <small>(87%)</small></div></div>
+    <div class="card span-3"><h3>candle 인덱스</h3><div class="kfig">561 MB <small>/ 테이블 288 MB</small></div></div>
+    <div class="card span-3"><h3>활성 커넥션</h3><div class="kfig">22 <small>(idle 21 + active 1)</small></div></div>
+    <div class="card span-12">
+      <h3>측정 환경</h3>
+      <ul>
+        <li>운영 기간: 분봉 2025-12-08 ~ 2026-06-05 (약 6개월) · 일봉 2006년~ · 주/월/년봉 1996년~</li>
+        <li>커넥션 풀 한도: api 10 / batch 5 / consumer 5 (Hikari) — 포화 징후 없음</li>
+        <li>WAL 건강: <code>checkpoints_timed 1,209 vs checkpoints_req 1</code> — 압박 없음 ✅</li>
+        <li>autovacuum: candle 포함 정상 동작, dead tuple 누적 없음 (candle n_dead_tup=0) ✅</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- §3 테이블별 row/크기 -->
+  <h2>§3. 테이블별 row 수·크기 (상위 + 주요)</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>테이블</th><th class="num">rows</th><th class="num">총크기</th><th class="num">테이블</th><th class="num">인덱스</th><th>쓰기 주체 / 주기</th></tr></thead>
+      <tbody>
+        <tr><td><b>candle</b></td><td class="num"><b>2,409,352</b></td><td class="num"><b>849 MB</b></td><td class="num">288 MB</td><td class="num"><b>561 MB</b></td><td>consumer WS 실시간(BoundaryAggregator) + api 5분 refresh(LiveDailyCandleScheduler) + batch 보정</td></tr>
+        <tr><td>market_index_snapshot</td><td class="num">30,029</td><td class="num">60 MB</td><td class="num">36 MB</td><td class="num">5.5 MB</td><td>batch 1분 cron (장중 09:00–15:30, 26 req/min)</td></tr>
+        <tr><td>news_article</td><td class="num">42,129</td><td class="num">32 MB</td><td class="num">23 MB</td><td class="num">8.7 MB</td><td>api 1분 폴링 (Naver)</td></tr>
+        <tr><td>disclosure</td><td class="num">11,449</td><td class="num">4.4 MB</td><td class="num">2.9 MB</td><td class="num">1.5 MB</td><td>api 1분 cron (DART)</td></tr>
+        <tr><td>scenario_event</td><td class="num">10,415</td><td class="num">4.9 MB</td><td class="num">3.9 MB</td><td class="num">1.0 MB</td><td>QA 시나리오 재생 (온디맨드)</td></tr>
+        <tr><td>system_event</td><td class="num">4,025</td><td class="num">1.7 MB</td><td class="num">0.9 MB</td><td class="num">0.8 MB</td><td>운영 이벤트</td></tr>
+        <tr><td>instrument</td><td class="num">3,599</td><td class="num">2.2 MB</td><td class="num">1.1 MB</td><td class="num">1.0 MB</td><td>종목 마스터 sync</td></tr>
+        <tr><td>stomp_event</td><td class="num">1,912</td><td class="num">1.3 MB</td><td class="num">0.9 MB</td><td class="num">0.3 MB</td><td>STOMP 영속 — <span class="badge bad">7일 retention 미집행</span></td></tr>
+        <tr><td>order_audit_event</td><td class="num">1,160</td><td class="num">424 kB</td><td class="num">232 kB</td><td class="num">160 kB</td><td>consumer, 주문 상태 전환마다</td></tr>
+        <tr><td>backtest_trade</td><td class="num">1,022</td><td class="num">224 kB</td><td class="num">112 kB</td><td class="num">88 kB</td><td>batch 백테스트</td></tr>
+        <tr><td>notification_outbox</td><td class="num">443</td><td class="num">624 kB</td><td class="num">464 kB</td><td class="num">120 kB</td><td>Slack outbox, 5분 retry — <span class="badge warn">FAILED 198 적체</span></td></tr>
+        <tr><td>order_event_outbox</td><td class="num">391</td><td class="num">384 kB</td><td class="num">208 kB</td><td class="num">136 kB</td><td>Kafka outbox, <b>5초</b> drain — 전부 PUBLISHED ✅</td></tr>
+        <tr><td>signal</td><td class="num">351</td><td class="num">312 kB</td><td class="num">56 kB</td><td class="num">216 kB</td><td>consumer 실시간 upsert (멱등 UQ)</td></tr>
+        <tr><td>order_request</td><td class="num">136</td><td class="num">192 kB</td><td class="num">32 kB</td><td class="num">128 kB</td><td>주문 의도 — insert 60 / update 469 (상태 전환)</td></tr>
+        <tr><td>order_execution</td><td class="num">33</td><td class="num">96 kB</td><td class="num">24 kB</td><td class="num">48 kB</td><td>분할 체결 (KIS WS 체결 통보)</td></tr>
+        <tr><td class="muted">나머지 (strategy·position·risk·pnl 등 40종)</td><td class="num muted">각 &lt; 500</td><td class="num muted">합 &lt; 2 MB</td><td class="num muted">—</td><td class="num muted">—</td><td class="muted">온디맨드</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §4 candle 분포 -->
+  <h2>§4. candle interval별 분포 (20종목 분봉 · 22–23종목 장기봉)</h2>
+  <div class="grid">
+    <div class="card span-8">
+      <table>
+        <thead><tr><th>interval</th><th class="num">rows</th><th>범위</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td><b>1m</b></td><td class="num"><b>1,369,230</b></td><td>2025-12-08 ~</td><td>종목당 ~68k–81k행 · <b>일 ~12,100행 증가</b> (08–20시 NXT)</td></tr>
+          <tr><td>3m</td><td class="num">469,827</td><td>2025-12-08 ~</td><td></td></tr>
+          <tr><td>5m</td><td class="num">282,193</td><td>2025-12-08 ~</td><td></td></tr>
+          <tr><td>15m / 30m / 1h / 90m / 4h / 12h</td><td class="num">198,712</td><td>2025-12-08 ~</td><td>합산</td></tr>
+          <tr><td>1d</td><td class="num">70,697</td><td>2006-02-08 ~</td><td>20년치</td></tr>
+          <tr><td>1wk / 1mo / 1y</td><td class="num">21,339</td><td>1996-05-27 ~</td><td>합산 · 30년치</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card span-4">
+      <h3>증가율 실측 (1m, 최근)</h3>
+      <table>
+        <thead><tr><th>일자</th><th class="num">1m rows</th></tr></thead>
+        <tbody>
+          <tr><td>06-01</td><td class="num">12,148</td></tr>
+          <tr><td>06-02</td><td class="num">12,343</td></tr>
+          <tr><td>06-04</td><td class="num">12,099</td></tr>
+          <tr><td>06-05</td><td class="num">8,918</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">20종목 기준 일 ~1.2만 행 = 종목당 ~600행/일</p>
+    </div>
+  </div>
+
+  <!-- §5 쓰기 부하 실측 -->
+  <h2>§5. 쓰기 부하 실측 (pg_stat_user_tables 누적)</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>테이블</th><th class="num">insert</th><th class="num">update</th><th class="num">delete</th><th class="num">HOT 비율</th><th>해석</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>candle</b></td><td class="num">1,864,079</td><td class="num"><b>4,461,094</b></td><td class="num">274,053</td><td class="num"><b>3.3%</b></td>
+          <td><span class="badge bad">update가 insert의 2.4배</span> ON CONFLICT upsert 재적재 + 진행봉 갱신. HOT 3.3% = 매 update마다 <b>인덱스 4개 전부 갱신</b> 중</td>
+        </tr>
+        <tr><td>order_request</td><td class="num">60</td><td class="num">469</td><td class="num">1</td><td class="num">77%</td><td>상태 전환 위주, HOT 양호 <span class="badge ok">✅</span></td></tr>
+        <tr><td>signal</td><td class="num">259</td><td class="num">233</td><td class="num">0</td><td class="num">0%</td><td>upsert 멱등 패턴 (UQ strategy_id,code,interval,ts)</td></tr>
+        <tr><td>market_index_snapshot</td><td class="num">19,665</td><td class="num">0</td><td class="num">0</td><td class="num">—</td><td>append-only, 깨끗 <span class="badge ok">✅</span></td></tr>
+        <tr><td>news_article / disclosure</td><td class="num">16,958 / 4,234</td><td class="num">0</td><td class="num">0</td><td class="num">—</td><td>append-only <span class="badge ok">✅</span></td></tr>
+      </tbody>
+    </table>
+    <p class="muted">candle idx_scan 누적 23,256,390회 — 차트/지표 조회가 압도적 읽기 부하. seq_scan은 24회뿐(인덱스 커버 양호).</p>
+  </div>
+
+  <!-- §6 경합부 -->
+  <h2>§6. 경합부(Contention) 분석 — 우선순위별</h2>
+
+  <div class="card span-12" style="margin-top:16px">
+    <h3><span class="badge bad">P1</span> candle 중복 인덱스 — 즉시 회수 가능한 167MB + 쓰기 증폭 주범</h3>
+    <pre>uq_candle_code_interval_ts      (code, interval, ts)       167MB — <span class="hl-ok">23,219,649 scans (주력)</span>
+idx_candle_code_interval_ts     (code, interval, ts DESC)  167MB — <span class="hl-bad">0 scans ← 완전 사장</span>
+idx_candle_code_interval_ts_v8  (code, interval, ts DESC)  167MB — <span class="hl-bad">idx와 정의 100% 동일 중복</span> (36,741 scans)
+pk_candle                       (id)                         61MB</pre>
+    <ul>
+      <li><code>idx_candle_code_interval_ts</code>와 <code>idx_candle_code_interval_ts_v8</code>은 <b>정의가 글자까지 동일한 중복 인덱스</b>. btree는 양방향 스캔이 가능해 UNIQUE 인덱스가 DESC 조회까지 커버한다.</li>
+      <li>현재 <b>모든 candle insert/update가 인덱스 4개를 동시 유지</b> — update 446만 × 4 = 쓰기 증폭의 주범이며, HOT update 3.3% 붕괴의 직접 원인 후보.</li>
+      <li><b>조치</b>: scan 0회 인덱스 제거 + v8↔uq 통합 검토 → 인덱스 <b>~334MB(전 DB의 1/3) 회수</b> + 장중 쓰기 부하 절반 수준 경감. Flyway V69 + <code>DROP INDEX CONCURRENTLY</code>.</li>
+    </ul>
+  </div>
+
+  <div class="card span-12" style="margin-top:16px">
+    <h3><span class="badge bad">P2</span> candle 스케일 폭발 — 실매매 유니버스 확장 시 1순위 경합점</h3>
+    <ul>
+      <li>현재 1m 캔들 20종목 = 일 1.2만 행. <b>스크리너 유니버스 200종목 확장 시 1m만 일 12만 행, 13개 interval 합산 월 ~500만 행</b> — 수개월 내 candle 단독 수 GB.</li>
+      <li>경합 구조: 장중 <b>consumer WS boundary 쓰기(초 단위)</b> + <b>api 5분 incremental refresh upsert</b> + <b>frontend 차트 조회(idx_scan 2,300만)</b>가 같은 hot page(최신 ts 구간)에 집중.</li>
+      <li>JPA batch insert <b>미적용</b>(<code>hibernate.jdbc.batch_size</code> 설정 없음) — row-by-row INSERT라 커넥션 점유 시간이 종목 수에 선형 비례.</li>
+      <li><b>조치</b>: ① 분봉 retention 정책(예: 1m 6개월) ② <code>fillfactor=90</code>으로 HOT 회복 ③ batch_size 도입 ④ 장기적으로 ts 기준 파티셔닝 검토.</li>
+    </ul>
+  </div>
+
+  <div class="card span-12" style="margin-top:16px">
+    <h3><span class="badge warn">P3</span> retention 부재 — 무한 증가 테이블 4종</h3>
+    <table>
+      <thead><tr><th>테이블</th><th>설계상 정책</th><th>실태 (실측)</th></tr></thead>
+      <tbody>
+        <tr><td>stomp_event</td><td>7일 (V41 설계)</td><td><b>oldest 2026-05-20 — 17일치 잔존, cleanup cron 미구현</b></td></tr>
+        <tr><td>market_index_snapshot</td><td>90일 (ADR 0100 §5-2 예정)</td><td>cleanup 미구현, 장중 분당 26행 증가 (30k행 / 60MB)</td></tr>
+        <tr><td>news_article</td><td>없음</td><td>42k행/6개월 — 유니버스 확장 시 비례 증가</td></tr>
+        <tr><td>notification_outbox</td><td>없음</td><td><b>FAILED 198행 적체</b> (Slack 재시도 5회 소진분) — 운영 노이즈</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card span-12" style="margin-top:16px">
+    <h3><span class="badge ok">P4</span> 자본 경로 — 현재 설계 양호, 스케일 시 주시점</h3>
+    <ul>
+      <li>✅ order_event_outbox: <code>FOR UPDATE SKIP LOCKED</code> + 5초 drain — 다중 인스턴스 안전. 현재 <b>FAILED 0건, 391건 전부 PUBLISHED</b>.</li>
+      <li>✅ order_request: Redis SETNX + DB UQ(idempotency_key) 이중 멱등 + HOT update 77% — row-level 경합 깨끗.</li>
+      <li>⚠️ 장 시작 동시 시그널 폭주 시 outbox 5초 주기 × batch 100행이 직렬 병목 가능 — 단, 개인 계좌 1인 운영 규모에선 여유 충분.</li>
+      <li>⚠️ NotificationOutboxRetryWorker는 SKIP LOCKED 없음 — 다중 인스턴스 배포 시 중복 발송 가능 (현재 단일 인스턴스라 비활성 리스크).</li>
+    </ul>
+  </div>
+
+  <div class="card span-12" style="margin-top:16px">
+    <h3><span class="badge info">P5</span> 커넥션 풀 — 현재 여유, candle 적재 직렬화가 잠재 변수</h3>
+    <ul>
+      <li>합계 한도 20 (api 10 / batch 5 / consumer 5), 실측 idle 21 · active 1 — 포화 징후 없음.</li>
+      <li>단, consumer 풀 5는 <b>WS tick 적재 + outbox drain + Kafka listener + backfill이 공유</b> — 유니버스 확장으로 boundary 쓰기가 길어지면 outbox drain(자본 경로)이 풀 대기에 걸릴 수 있음. 스케일 시 consumer 풀 분리/증설이 첫 조치.</li>
+      <li>checkpoints_timed 1,209 vs req 1 — WAL 압박 없음. autovacuum 정상(candle dead tuple 0).</li>
+    </ul>
+  </div>
+
+  <!-- §7 스케줄러/폴링 맵 -->
+  <h2>§7. 스케줄러·폴링 → 테이블 부하 맵</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>워커/스케줄러</th><th>모듈</th><th>주기</th><th>대상 테이블</th><th>경합 위험</th></tr></thead>
+      <tbody>
+        <tr><td>OrderOutboxPublisherWorker</td><td>consumer</td><td><b>5초</b> fixedDelay</td><td>order_event_outbox</td><td><span class="badge ok">낮음</span> SKIP LOCKED</td></tr>
+        <tr><td>BoundaryAggregator (WS tick)</td><td>consumer</td><td>초 단위 (boundary)</td><td>candle (1m~1h)</td><td><span class="badge bad">높음</span> hot page + 인덱스 4개 유지</td></tr>
+        <tr><td>LiveDailyCandleScheduler</td><td>api</td><td>5분 fixedRate (08–20시)</td><td>candle (1d)</td><td><span class="badge warn">중간</span> WS 쓰기와 동일 테이블 upsert</td></tr>
+        <tr><td>MarketIndexScheduler</td><td>batch</td><td>1분 cron (09:00–15:30)</td><td>market_index_snapshot</td><td><span class="badge ok">낮음</span> append-only</td></tr>
+        <tr><td>DartDisclosurePollingScheduler</td><td>api</td><td>1분 cron</td><td>disclosure</td><td><span class="badge ok">낮음</span> UQ 멱등</td></tr>
+        <tr><td>WatchlistNewsScheduler</td><td>api</td><td>1분</td><td>news_article</td><td><span class="badge ok">낮음</span> UQ 멱등</td></tr>
+        <tr><td>NotificationOutboxRetryWorker</td><td>consumer</td><td>5분 fixedDelay</td><td>notification_outbox</td><td><span class="badge warn">중간</span> SKIP LOCKED 없음</td></tr>
+        <tr><td>RealtimeSignalGenerator → OrderRouter</td><td>consumer</td><td>실시간 (Kafka)</td><td>signal → order_request → order_execution → order_audit_event</td><td><span class="badge ok">낮음</span> 3중 멱등 게이트</td></tr>
+        <tr><td>DailyPerformanceJob</td><td>batch</td><td>1회/일 00:30</td><td>pnl_daily, performance_summary</td><td><span class="badge ok">낮음</span></td></tr>
+        <tr><td>CandleBackfillService</td><td>consumer</td><td>부팅/온디맨드 (max-concurrent=1)</td><td>candle</td><td><span class="badge warn">중간</span> 대량 backfill 시 WS 쓰기와 경합</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §8 권고 -->
+  <h2>§8. 권고 액션 (우선순위 · 전부 비파괴적/롤백 용이)</h2>
+  <div class="card span-12">
+    <table>
+      <thead><tr><th>#</th><th>액션</th><th>효과</th><th>난이도</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><code>DROP INDEX CONCURRENTLY idx_candle_code_interval_ts</code> (scan 0회) + v8↔uq 통합 검토 → Flyway V69</td><td>즉시 167MB(최대 334MB) 회수 + 장중 candle 쓰기 부하 대폭 경감</td><td><span class="badge ok">낮음</span></td></tr>
+        <tr><td>2</td><td>stomp_event 7일 / market_index_snapshot 90일 cleanup 스케줄러 구현</td><td>설계상 이미 약속된 정책의 집행 — 무한 증가 차단</td><td><span class="badge ok">낮음</span></td></tr>
+        <tr><td>3</td><td>notification_outbox FAILED 198건 원인 확인 후 정리 + FAILED retention 정책</td><td>운영 노이즈 제거 + Slack 발송 실패 근본 원인 가시화</td><td><span class="badge ok">낮음</span></td></tr>
+        <tr><td>4</td><td>candle <code>fillfactor=90</code> + <code>hibernate.jdbc.batch_size</code> 도입</td><td>HOT update 회복(3.3% → 정상화) + 적재 커넥션 점유 단축 — 유니버스 확장 전 선행</td><td><span class="badge warn">중간</span></td></tr>
+        <tr><td>5</td><td>1m/3m 분봉 retention 정책 ADR 발행 (유니버스 확장과 동시 결정)</td><td>200종목 확장 시 월 ~500만 행 증가의 상한 확정</td><td><span class="badge warn">중간</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- §9 직전 대비 -->
+  <h2>§9. 직전 평가 대비 diff</h2>
+  <div class="card span-12">
+    <p><span class="badge info">첫 발행</span> 본 slug(<code>db-usage-contention-audit</code>)의 최초 평가입니다. 다음 발행 시 본 §9에 candle 크기·인덱스 수·retention 집행 여부·FAILED 적체량의 시계열 diff를 기록합니다.</p>
+    <ul>
+      <li>차기 추적 지표: ① candle 총크기/인덱스 크기 ② candle HOT 비율 ③ stomp_event oldest ④ notification_outbox FAILED 건수 ⑤ 1m 일일 증가행</li>
+    </ul>
+  </div>
+
+  <footer>
+    evidence: <code>pg_stat_user_tables</code> · <code>pg_stat_user_indexes</code> · <code>pg_indexes</code> · <code>pg_stat_bgwriter</code> · <code>pg_stat_activity</code> 실측 (2026-06-06, magicjar-postgres) + 코드 전수 탐색(Flyway V1–V68 · @Scheduled 전수 · Hikari 설정 · outbox worker 소스). ADR 0108 평가 템플릿 준수 · 작성: orchestrator
+  </footer>
+</main>
+</body>
+</html>

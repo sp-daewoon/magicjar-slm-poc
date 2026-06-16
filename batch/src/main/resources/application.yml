@@ -1,0 +1,125 @@
+spring:
+  profiles:
+    active: dev,real-kis
+  application:
+    name: magicjar-batch
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/magicjar}
+    username: ${DB_USER:magicjar}
+    password: ${DB_PASSWORD:magicjar}
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false  # api 모듈만 Flyway 실행 (ADR 0006 §마이그레이션)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: magicjar-batch
+      auto-offset-reset: earliest
+  batch:
+    job:
+      enabled: false  # 자동 실행 차단 — PR-7+에서 트리거 명시
+
+server:
+  port: 8081
+  shutdown: graceful
+
+# ADR 0094 P0-OPS-2 — Actuator/Prometheus 노출 (3 모듈 정합 LOCK)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics, prometheus, loggers, env
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      environment: ${SPRING_PROFILES_ACTIVE:dev}
+
+magicjar:
+  mode: ${MAGICJAR_MODE:MOCK}
+  allow-real: ${MAGICJAR_ALLOW_REAL:false}
+  secret:
+    master-key: ${MAGICJAR_SECRET_MASTER_KEY:}
+  kis:
+    base-url-prod: ${MAGICJAR_KIS_BASE_URL_PROD:https://openapi.koreainvestment.com:9443}
+    base-url-vps: ${MAGICJAR_KIS_BASE_URL_VPS:https://openapivts.koreainvestment.com:29443}
+    # KIS REST rate limiter — api·batch·consumer 동일 Redis 버킷 share (ADR 0116 Phase 2 3-tier).
+    # interval refill로 burst를 완화해 EGW00201 빈도를 낮춘다.
+    rate-limiter:
+      enabled: ${MAGICJAR_KIS_RATE_LIMIT_ENABLED:true}
+      bucket-capacity: ${MAGICJAR_KIS_RATE_LIMIT_BURST:10}
+      bucket-refill-tokens: 10
+      # ADR 0116 §2-B priority별 별도 버킷 (USER 4 / SHARED 3 / BG 3 = 합 10) — api·consumer 동일 LOCK.
+      # batch 는 USER_PATH 0 (USER 버킷 미접근)이나 합 검증·config 정합 위해 동일 보유.
+      priority-buckets-enabled: ${MAGICJAR_KIS_PRIORITY_BUCKETS_ENABLED:true}
+      bucket-user: ${MAGICJAR_KIS_BUCKET_USER:4}
+      bucket-realtime-market: ${MAGICJAR_KIS_BUCKET_REALTIME_MARKET:2}
+      bucket-shared: ${MAGICJAR_KIS_BUCKET_SHARED:2}
+      bucket-bg: ${MAGICJAR_KIS_BUCKET_BG:2}
+      # deprecated (ADR 0116 — priority-buckets-enabled로 일반화). 하위호환 바인딩 보존.
+      user-path-reserve-tokens: ${MAGICJAR_KIS_USER_PATH_RESERVE:3}
+      bucket-refill-period-seconds: 1
+      bucket-key: kis-rate-limit:global
+      bucket-ttl-seconds: 10
+      acquire-poll-interval-millis: 50
+    index:
+      # static env credential 이 없으면 DB REAL credential 로 자동 fallback.
+      # 시장지수는 시세·캔들과 같은 REAL quotation 정책을 따른다.
+      use-real-credential: ${MAGICJAR_KIS_INDEX_USE_REAL_CREDENTIAL:true}
+  market:
+    index:
+      sync:
+        inter-request-delay-ms: ${MAGICJAR_MARKET_INDEX_SYNC_INTER_REQUEST_DELAY_MS:250}
+  corp-action:
+    # cron 18:30 KST (UTC+9) = 09:30 UTC (KRX 마감 + 정리 시간)
+    sync-cron: ${MAGICJAR_CORP_ACTION_SYNC_CRON:0 30 9 * * *}
+  instrument:
+    # 부팅 직후 즉시 sync (dev=true 권장, prd=false — cron만)
+    sync-at-boot: ${MAGICJAR_INSTRUMENT_SYNC_AT_BOOT:false}
+    # KIS 종목 마스터 zip URL (KIS-first — kis-api-reference.md §6)
+    kospi-mst-url: ${MAGICJAR_KIS_KOSPI_MST_URL:https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip}
+    kosdaq-mst-url: ${MAGICJAR_KIS_KOSDAQ_MST_URL:https://new.real.download.dws.co.kr/common/master/kosdaq_code.mst.zip}
+    # KIS 비활성화 (test profile·CI 환경 — 시드 fallback 사용)
+    kis-disabled: ${MAGICJAR_INSTRUMENT_KIS_DISABLED:false}
+    # 시드 파일 경로 (classpath 기준)
+    seed-path: ${MAGICJAR_INSTRUMENT_SEED_PATH:instrument-seed.json}
+  market-calendar:
+    # 부팅 직후 KIS chk-holiday sync 실행 (ADR 0013 §2-2, PR-29a)
+    # KIS 명시 "1일 1회 권장" — dev=false 권장 (cron 03:00 단독 실행)
+    sync-at-boot: ${MAGICJAR_MARKET_CALENDAR_SYNC_AT_BOOT:false}
+    # KIS chk-holiday 비활성 (test·CI 환경 — 정적 시드만 사용)
+    kis-disabled: ${MAGICJAR_MARKET_CALENDAR_KIS_DISABLED:false}
+    # 시드 파일 경로 (classpath 기준)
+    seed-path: ${MAGICJAR_MARKET_CALENDAR_SEED_PATH:market-calendar-seed.json}
+
+
+# ─────────────────────────────────────────────────
+# 로깅 레벨 — 노이즈 차단 (v3.1.0 dogfooding hotfix)
+# ─────────────────────────────────────────────────
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
+    org.apache.kafka: WARN
+    org.apache.kafka.clients.NetworkClient: ERROR
+    org.springframework.kafka: WARN
+    kr.spdaewoon.magicjar: INFO

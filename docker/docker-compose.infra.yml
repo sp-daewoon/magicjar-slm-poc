@@ -1,0 +1,74 @@
+# magicJar 인프라 전용 (postgres + kafka + redis)
+# 개발자가 IDE/터미널에서 :api:bootRun, :batch:bootRun, :consumer:bootRun으로
+# 앱을 직접 실행할 때 사용한다.
+#
+# 사용:
+#   docker compose -f docker/docker-compose.infra.yml up -d
+#   ./gradlew :api:bootRun   # 호스트에서 직접 실행
+#
+# 호스트 → 컨테이너 매핑은 모두 localhost:<port>로 노출되어
+# IntelliJ bootRun에서 그대로 접속 가능.
+
+name: magicjar-infra
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: magicjar-postgres
+    environment:
+      POSTGRES_DB: magicjar
+      POSTGRES_USER: magicjar
+      POSTGRES_PASSWORD: magicjar
+      TZ: Asia/Seoul
+    ports: ["5432:5432"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "magicjar", "-d", "magicjar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    # 공식 Apache Kafka 이미지 (KRaft). 호스트의 bootRun은 localhost:9092로 접속하므로
+    # EXTERNAL listener를 localhost:9092로 광고한다.
+    image: apache/kafka:3.7.0
+    container_name: magicjar-kafka
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    ports: ["9092:9092"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: magicjar-redis
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pg_data:

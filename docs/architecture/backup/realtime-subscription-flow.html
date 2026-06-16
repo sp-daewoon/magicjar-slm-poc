@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Realtime Subscription Flow</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --panel: #111827;
+      --panel-2: #162033;
+      --line: #334155;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --blue: #38bdf8;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #fb7185;
+      --violet: #a78bfa;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+      line-height: 1.45;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 7px 10px;
+      background: rgba(17, 24, 39, 0.8);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--blue);
+    }
+
+    .dot.command {
+      background: var(--amber);
+    }
+
+    .dot.market {
+      background: var(--green);
+    }
+
+    .dot.socket {
+      background: var(--blue);
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid #26354b;
+      border-radius: 8px;
+      background: #0f172a;
+      min-height: 690px;
+    }
+
+    .node {
+      position: absolute;
+      display: flex;
+      min-height: 92px;
+      flex-direction: column;
+      justify-content: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 14px;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.25);
+    }
+
+    .node strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #f8fafc;
+      font-size: 16px;
+    }
+
+    .node small {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .browser { left: 40px; top: 258px; width: 170px; border-color: var(--blue); }
+    .api { left: 265px; top: 118px; width: 170px; border-color: var(--violet); }
+    .stomp { left: 265px; top: 390px; width: 170px; border-color: var(--blue); }
+    .kafka-command { left: 500px; top: 118px; width: 180px; border-color: var(--amber); }
+    .consumer { left: 745px; top: 250px; width: 180px; border-color: var(--red); }
+    .kis { left: 970px; top: 250px; width: 170px; border-color: var(--red); }
+    .kafka-market { left: 500px; top: 390px; width: 180px; border-color: var(--green); }
+
+    .lane-label {
+      position: absolute;
+      left: 24px;
+      z-index: 2;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #111827;
+    }
+
+    .lane-command {
+      top: 28px;
+      background: var(--amber);
+    }
+
+    .lane-market {
+      top: 555px;
+      background: var(--green);
+    }
+
+    svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .arrow {
+      fill: none;
+      stroke-width: 2.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .arrow.command { stroke: var(--amber); marker-end: url(#arrow-command); }
+    .arrow.market { stroke: var(--green); marker-end: url(#arrow-market); }
+    .arrow.socket { stroke: var(--blue); marker-end: url(#arrow-socket); }
+    .arrow.kis { stroke: var(--red); marker-end: url(#arrow-kis); }
+
+    .edge-label {
+      position: absolute;
+      z-index: 3;
+      max-width: 205px;
+      border: 1px solid #26354b;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.96);
+      padding: 7px 9px;
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+
+    .l1 { left: 106px; top: 392px; }
+    .l2 { left: 106px; top: 178px; }
+    .l3 { left: 455px; top: 88px; }
+    .l4 { left: 686px; top: 150px; }
+    .l5 { left: 915px; top: 202px; }
+    .l6 { left: 915px; top: 350px; }
+    .l7 { left: 692px; top: 430px; }
+    .l8 { left: 452px; top: 474px; }
+    .l9 { left: 228px; top: 512px; }
+
+    .details {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .details section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.74);
+      padding: 14px;
+    }
+
+    .details h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .details p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    code {
+      color: #dbeafe;
+      font-family:
+        ui-monospace,
+        SFMono-Regular,
+        Menlo,
+        Monaco,
+        Consolas,
+        "Liberation Mono",
+        monospace;
+      font-size: 0.95em;
+    }
+
+    @media (max-width: 980px) {
+      main {
+        width: min(760px, calc(100vw - 28px));
+      }
+
+      .stage {
+        min-height: auto;
+        padding: 18px;
+      }
+
+      svg,
+      .edge-label,
+      .lane-label {
+        display: none;
+      }
+
+      .node {
+        position: static;
+        width: auto;
+        min-height: 0;
+        margin-bottom: 12px;
+      }
+
+      .details {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>실시간 구독 플로우</h1>
+    <p class="subtitle">
+      Browser는 KIS나 Kafka에 직접 붙지 않습니다. Browser는 api의 STOMP 방에 들어가고,
+      KIS WebSocket은 consumer app이 직접 연결합니다.
+    </p>
+
+    <div class="legend" aria-label="범례">
+      <span><i class="dot socket"></i>Browser to api WebSocket/STOMP</span>
+      <span><i class="dot command"></i>Kafka command topic</span>
+      <span><i class="dot market"></i>Kafka market data topic</span>
+    </div>
+
+    <section class="stage" aria-label="실시간 구독 아키텍처 다이어그램">
+      <div class="lane-label lane-command">구독 명령 흐름</div>
+      <div class="lane-label lane-market">시세 데이터 흐름</div>
+
+      <div class="node browser">
+        <strong>Browser</strong>
+        <small>종목 상세 화면<br />/symbol/030000</small>
+      </div>
+
+      <div class="node api">
+        <strong>api app</strong>
+        <small>REST controller<br />Kafka producer</small>
+      </div>
+
+      <div class="node stomp">
+        <strong>api STOMP broker</strong>
+        <small>/ws 연결<br />/topic 방 관리</small>
+      </div>
+
+      <div class="node kafka-command">
+        <strong>Kafka broker</strong>
+        <small><code>symbol.detail.command.v1</code><br />명령 topic</small>
+      </div>
+
+      <div class="node consumer">
+        <strong>consumer app</strong>
+        <small>KIS bridge<br />Kafka consumer/producer</small>
+      </div>
+
+      <div class="node kis">
+        <strong>KIS WebSocket</strong>
+        <small>증권사 실시간 서버<br />H0UNCNT0 / H0UNASP0</small>
+      </div>
+
+      <div class="node kafka-market">
+        <strong>Kafka broker</strong>
+        <small><code>market.tick.v1</code><br /><code>market.orderbook.v1</code></small>
+      </div>
+
+      <svg viewBox="0 0 1180 690" role="img" aria-label="실시간 구독 화살표">
+        <defs>
+          <marker id="arrow-command" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#fbbf24"></path>
+          </marker>
+          <marker id="arrow-market" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"></path>
+          </marker>
+          <marker id="arrow-socket" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"></path>
+          </marker>
+          <marker id="arrow-kis" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#fb7185"></path>
+          </marker>
+        </defs>
+
+        <path class="arrow socket" d="M 210 335 C 230 360, 240 410, 265 435"></path>
+        <path class="arrow command" d="M 210 282 C 230 225, 245 172, 265 165"></path>
+        <path class="arrow command" d="M 435 165 L 500 165"></path>
+        <path class="arrow command" d="M 680 165 C 720 170, 735 225, 745 286"></path>
+        <path class="arrow kis" d="M 925 296 L 970 296"></path>
+        <path class="arrow kis" d="M 970 345 L 925 345"></path>
+        <path class="arrow market" d="M 745 395 C 725 430, 705 435, 680 435"></path>
+        <path class="arrow market" d="M 500 435 L 435 435"></path>
+        <path class="arrow socket" d="M 265 485 C 240 480, 220 405, 210 348"></path>
+      </svg>
+
+      <div class="edge-label l1">1. Browser가 api의 <code>/ws</code>에 연결하고 STOMP 방을 구독</div>
+      <div class="edge-label l2">2. Browser가 REST로 실시간 수요 등록 요청</div>
+      <div class="edge-label l3">3. api가 command topic에 <code>ENTER</code> produce</div>
+      <div class="edge-label l4">4. consumer app은 command를 이미 consume 중</div>
+      <div class="edge-label l5">5. consumer app이 KIS WS에 종목 subscribe</div>
+      <div class="edge-label l6">6. KIS 실시간 tick/호가가 consumer app으로 내려옴</div>
+      <div class="edge-label l7">7. consumer app이 market topic에 시세 produce</div>
+      <div class="edge-label l8">8. api가 market topic을 consume</div>
+      <div class="edge-label l9">9. api STOMP broker가 Browser 방으로 push</div>
+    </section>
+
+    <div class="details">
+      <section>
+        <h2>Browser가 직접 하는 일</h2>
+        <p>
+          <code>/ws</code> WebSocket에 연결하고 <code>/topic/market.tick.030000</code> 방을 구독합니다.
+          Kafka나 KIS에는 직접 붙지 않습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>Command topic의 의미</h2>
+        <p>
+          <code>symbol.detail.command.v1</code>은 시세 데이터가 아니라
+          "030000 상세 화면 ENTER/EXIT" 같은 작업 지시를 담습니다.
+        </p>
+      </section>
+
+      <section>
+        <h2>consumer app의 역할</h2>
+        <p>
+          consumer app은 Kafka 자체가 아닙니다. KIS WebSocket client이면서,
+          command topic consumer이고 market topic producer입니다.
+        </p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

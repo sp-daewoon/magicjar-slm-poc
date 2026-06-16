@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="magicjar-consumer"/>
+    <springProperty scope="context" name="springActiveProfiles" source="spring.profiles.active" defaultValue="default"/>
+
+    <!--
+        ADR 0094 P0-OPS-1 — logback JSON encoder + MDC 5 키 표준화 (3 모듈 정합 LOCK).
+        TraceIdKafkaRecordInterceptor가 inbound record 진입 시 MDC `traceId` 부착 →
+        listener 본문 + downstream Kafka send + KIS REST 호출 로그 전체에 같은 traceId 출력 +
+        JSON 필드 자동 직렬화(prd).
+
+        profile 분기 / MDC 키 정합 매트릭스는 api/.../logback-spring.xml 참고.
+    -->
+    <appender name="PLAIN_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{HH:mm:ss.SSS} [%X{traceId:--}] [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>ts</timestamp>
+                <message>msg</message>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <version>[ignore]</version>
+            </fieldNames>
+            <customFields>{"application":"${springAppName}","profiles":"${springActiveProfiles}"}</customFields>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>orderId</includeMdcKeyName>
+            <includeMdcKeyName>strategyId</includeMdcKeyName>
+            <timeZone>Asia/Seoul</timeZone>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="PLAIN_STDOUT"/>
+    </root>
+
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="PLAIN_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <springProfile name="prd">
+        <root level="INFO">
+            <appender-ref ref="JSON_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="INFO"/>
+    </springProfile>
+</configuration>

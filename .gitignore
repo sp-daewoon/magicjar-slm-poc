@@ -1,0 +1,95 @@
+# Build output
+build/
+out/
+bin/
+target/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.war
+*.ear
+*.class
+
+# .claire/ — .claude/ 오타로 일부 도구가 만드는 임시 디렉토리 (PR-12·16에서 누적 확인)
+.claire/
+
+# Gradle
+.gradle/
+!gradle-wrapper.properties
+
+# Kotlin / IntelliJ session caches
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.project
+.classpath
+.settings/
+.factorypath
+
+# macOS
+.DS_Store
+
+# Logs
+logs/
+*.log
+
+# Secrets / local profiles
+.env
+.env.example
+!.env.example
+# IntelliJ HTTP Client — KIS 시크릿 보관 (커밋 금지). public env(http-client.env.json)은 커밋.
+http-client.private.env.json
+**/http-client.private.env.json
+.env.curl
+application-local.yml
+application-local.yaml
+application-secret.*
+src/main/resources/application-local.*
+src/main/resources/application-secret.*
+
+# Harness workspace — 설계 산출물(ADR·tasks·module-boundaries 등)은 커밋 대상.
+# _workspace/ 자체는 커밋. 다만 이전 스냅샷·실행 로그·생성 산출물은 제외.
+_workspace_prev/
+_workspace/**/smoke-*.md
+_workspace/_harness-state.lock
+_workspace/dashboard.html
+_workspace/run/
+
+# backup 산출물 (ADR 0096 §2-4 — 실 dump/snapshot 파일 git tracked 0)
+_workspace/backups/
+!_workspace/backups/
+_workspace/backups/*
+!_workspace/backups/README.md
+
+# Claude Code local overrides (per-user, do not commit)
+.claude/settings.local.json
+.claude/worktrees/
+
+# Node.js (husky host)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Frontend build output
+frontend/node_modules/
+frontend/dist/
+
+# Coverage
+coverage/
+.jacoco/
+
+# OS / editor backups
+*.swp
+*~
+
+.claude/scheduled_tasks.lock
+
+# 실 운영(prd) docker-compose는 사용자별·환경별 발급 후 별도 보관
+docker/docker-compose.prd.yml
+
+.superpowers/

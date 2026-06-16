@@ -1,0 +1,15 @@
+{
+  "name": "magicjar-hooks",
+  "version": "0.2.0",
+  "private": true,
+  "description": "magicJar Git hook runner (Husky) and future Tailwind CLI host. App code is in Kotlin/Gradle.",
+  "scripts": {
+    "prepare": "husky",
+    "status": "node scripts/render-status.mjs",
+    "status:watch": "node scripts/status-watch.mjs",
+    "task": "node scripts/task.mjs"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}

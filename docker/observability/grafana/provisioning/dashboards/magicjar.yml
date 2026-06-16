@@ -1,0 +1,16 @@
+# Grafana dashboard provider — ADR 0094 P0-OPS-2
+# /var/lib/grafana/dashboards 의 JSON 파일을 자동 등록.
+
+apiVersion: 1
+
+providers:
+  - name: magicjar
+    orgId: 1
+    folder: magicJar
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

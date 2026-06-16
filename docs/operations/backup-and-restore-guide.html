@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 백업·복원 가이드 — 무엇이, 어떻게, 어디에 남는가</title>
+  <style>
+    :root {
+      --bg: #f6f8fb; --panel: #ffffff; --ink: #172033; --muted: #667085;
+      --line: #d9e1ec; --ok: #15803d; --warn: #b45309; --bad: #b42318; --blue: #0b66c3;
+      --soft-ok: #eaf7ee; --soft-warn: #fff4df; --soft-bad: #fff0ef; --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1080px; margin: 0 auto; padding: 34px 24px 54px; }
+    header { display: grid; gap: 12px; padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%); }
+    h1, h2, h3 { margin: 0; }
+    h1 { font-size: 28px; line-height: 1.25; }
+    h2 { margin-top: 34px; font-size: 21px; }
+    h3 { font-size: 16px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; font-size: 13px; }
+    .muted { color: var(--muted); }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-top: 14px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 9px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 14px; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    pre { margin: 12px 0 0; padding: 14px; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: #0f172a; color: #dbe7ff; font-size: 13px; line-height: 1.6; }
+    .alert { margin-top: 14px; padding: 14px 16px; border-radius: 10px; border: 1px solid; }
+    .alert.bad { border-color: #f3b6b1; background: var(--soft-bad); }
+    .alert.warn { border-color: #f0d39b; background: var(--soft-warn); }
+    .alert b:first-child { display: block; margin-bottom: 4px; }
+    .tree { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.7; background: #0f172a; color: #dbe7ff; border-radius: 10px; padding: 14px; margin-top: 12px; overflow-x: auto; }
+    .tree .c { color: #7dd3fc; }
+    .tree .g { color: #86efac; }
+    .tree .m { color: #94a3b8; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    a { color: var(--blue); }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><span class="badge info">OPERATIONS GUIDE</span> <span class="badge ok">ADR 0096 집행</span></div>
+    <h1>magicJar 백업·복원 가이드</h1>
+    <p class="muted">발행 2026-06-06 · 짝 문서: <a href="new-pc-migration-runbook.md">new-pc-migration-runbook.md</a> (새 PC 복원 절차 C-1~C-7) · <a href="backup-setup.md">backup-setup.md</a> (cron 설정) · <code>scripts/backup/README.md</code> (스크립트 매트릭스)</p>
+    <p><b>한 줄 요약</b> — 매일 03:00 Postgres 전체 dump(7일 회전) + 03:30 Redis snapshot(3일 회전)이 <code>_workspace/backups/</code>에 남는다. 이 폴더는 <b>git에 올라가지 않으므로</b> 외부 매체 복사가 의무이고, <b><code>.env</code>와 dump는 한 세트</b>다.</p>
+    <div class="callout warn" style="margin-top:12px">
+      <b>★ 2026-06-09 전종목 일봉 마이그레이션 복구 기준점</b><br>
+      KIS 채널 결함(UN/NX 일봉이 일부 종목 2026-02-11 동결) 근본 fix(J 단일, PR #844·#846) 후, 전체 일봉패밀리(1d·1wk·1mo·1y)를 wipe→J 채널로 재적재(보통주 2,517종목·10년). 그 직후 <code>2026-06-09.dump</code>(171MB)가 <b>재구축된 전종목 일봉의 복구 baseline</b>이다. 향후 일봉 손상 시 이 dump 복원 = 수 시간 재적재 없이 즉시 회복. <b>1m·5m 실시간 누적분(209만/43만 행)은 KIS REST 복구 불가</b>이므로 이 dump가 사실상 유일 복원원(ADR 0105 1년 한도와 함께). 외부 매체 복사 권장.
+    </div>
+  </header>
+
+  <h2>1. 무엇이 남는가 — 백업 산출물 디렉토리 구조</h2>
+  <div class="tree">_workspace/backups/                <span class="m">← .gitignore 59행 — git push로 절대 안 올라감</span>
+├── README.md                      <span class="m">← 이 구조 설명 (git 추적 예외)</span>
+├── postgres/
+│   ├── daily/
+│   │   ├── <span class="g">2026-06-06.dump</span>        <span class="m">← 매일 03:00 생성 · pg_dump custom format(-Fc) · ~56MB (전종목 일봉 마이그레이션 전)</span>
+│   │   ├── <span class="g">2026-06-09.dump</span>        <span class="m">← ★ 전종목 일봉 마이그레이션 후 · ~171MB (candle 870만행: 1d 전종목 10년 + 1m/5m)</span>
+│   │   ├── <span class="g">2026-06-07.dump</span>        <span class="m">← 날짜 1개당 1파일, 같은 날 재실행 시 덮어씀</span>
+│   │   └── ...                    <span class="m">← 7일 초과분 자동 삭제 (retention rotation)</span>
+│   └── <span class="c">cron.log</span>                   <span class="m">← cron 실행 로그 (성공/실패 추적)</span>
+└── redis/
+    ├── snapshots/
+    │   └── <span class="g">dump-2026-06-06-2152.rdb</span> <span class="m">← 03:30 RDB snapshot · ~71KB · 3일 회전</span>
+    └── <span class="c">cron.log</span></div>
+
+  <div class="card">
+    <h3>dump 파일 안에 들어있는 것 (TABLE DATA 56개 테이블 전체)</h3>
+    <table>
+      <thead><tr><th>분류</th><th>테이블</th><th>잃으면?</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge bad">유일본</span></td><td><b>user_kis_credential</b>(AES 암호화) · strategy · watchlist · risk_config · user_account · user_preference · trading_journal · pnl_daily · performance_summary · backtest_* · strategy_position · kill_switch_state · system_config · 사용자 생성 프리셋(custom_*) · order/audit 이력</td><td><b>영구 소실</b> — 다른 복원 경로 없음</td></tr>
+        <tr><td><span class="badge warn">조건부</span></td><td><b>candle</b> (1m봉 240만+ 행 포함)</td><td>1m봉은 KIS 서버 보관 <b>1년 한도</b> — 1년 초과분은 dump가 유일한 복원원 (ADR 0105)</td></tr>
+        <tr><td><span class="badge ok">재수집 가능</span></td><td>news_article · disclosure · market_index_snapshot · instrument</td><td>KIS/DART/네이버에서 재수집 (시간만 소요)</td></tr>
+        <tr><td><span class="badge ok">seed 자동</span></td><td>prompt_template 5종(V50) · AI 발굴 프리셋 3종(V70) · market_calendar(V6) · 기본 risk_config(V16) 등</td><td>Flyway 마이그레이션이 새 DB에 자동 복원</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">dump에는 <code>flyway_schema_history</code>도 포함 — 복원하면 마이그레이션 이력까지 그대로 살아나 앱이 즉시 인식한다.</p>
+  </div>
+
+  <h2>2. 어떻게 남는가 — 생성 메커니즘</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>단계</th><th>동작</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>cron이 03:00 KST에 <code>scripts/backup/pg-dump-daily.sh</code> 실행</td></tr>
+        <tr><td>2</td><td><code>magicjar-postgres</code> 컨테이너 running 검증 (없으면 exit 1 + 로그)</td></tr>
+        <tr><td>3</td><td><code>docker exec pg_dump -Fc</code>(custom format — 압축 + 선택 복원 가능) → <code>postgres/daily/YYYY-MM-DD.dump</code></td></tr>
+        <tr><td>4</td><td>7일 초과 파일 자동 삭제 (retention rotation) + 현재 목록 로그</td></tr>
+        <tr><td>5</td><td>03:30 <code>redis-snapshot.sh</code> — Redis BGSAVE 후 RDB 복사, 3일 회전</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">수동 1회 실행: <code>bash scripts/backup/pg-dump-daily.sh</code> — 재배포·릴리즈 cut 직전 의무 권장.</p>
+  </div>
+
+  <h2>3. ⚠️ 반드시 알아야 할 경고 2건</h2>
+  <div class="alert bad">
+    <b>🔑 .env + pg dump = 한 세트 (분리 보관 시 복구 불가)</b>
+    KIS app key/secret은 DB에 AES-256-GCM 암호화로 저장되는데, 그 <b>암호화 마스터키(<code>MAGICJAR_SECRET_MASTER_KEY</code>)가 <code>.env</code>에만</b> 있다. dump만 있고 .env가 없으면 KIS 자격증명은 복호화 불가. <code>.env</code>는 git 제외 파일이므로 <b>백업 1순위</b>다. (Anthropic/DART 키·DB 비밀번호도 .env에만 존재)
+  </div>
+  <div class="alert warn">
+    <b>🕯️ "캔들은 다시 받으면 된다"는 절반만 맞다</b>
+    1m봉은 KIS 서버가 <b>최근 1년치만</b> 보관한다(FHKST03010230). 지금 DB의 2025-12월~ 1m 데이터는 시간이 지나면 KIS에서 사라지고, 그때부터는 <b>pg dump가 유일한 보존 수단</b>이다. dump 7일 회전이므로 장기 보관본은 외부 매체에 주기적으로 복사할 것.
+  </div>
+
+  <h2>4. 외부 매체 복사 (PC 포맷 대비 — 의무)</h2>
+  <div class="card">
+    <p><code>_workspace/backups/</code>는 <b>.gitignore</b>라 repo push로는 보존되지 않는다. 아래 최소 세트를 클라우드/USB에 복사:</p>
+    <table>
+      <thead><tr><th>대상</th><th>경로</th><th>비고</th></tr></thead>
+      <tbody>
+        <tr><td><b>① .env</b></td><td><code>/Users/ak-song/magic_ch1/.env</code></td><td>시크릿 — 암호화된 매체 권장</td></tr>
+        <tr><td><b>② 최신 dump</b></td><td><code>_workspace/backups/postgres/daily/&lt;최신&gt;.dump</code></td><td>매주 1회 이상 갱신 복사</td></tr>
+        <tr><td>③ (선택) redis rdb</td><td><code>_workspace/backups/redis/snapshots/</code></td><td>휘발 캐시 — 없어도 자동 재구성</td></tr>
+        <tr><td>④ (선택) 기타 시크릿</td><td><code>application-local.*</code> · <code>*.p12</code> · <code>*.pem</code></td><td>존재 시</td></tr>
+      </tbody>
+    </table>
+    <pre># 예: 클라우드 동기화 폴더로 1줄 복사 (수동 또는 주간 cron)
+rsync -a --delete _workspace/backups/ ~/Library/CloudStorage/&lt;클라우드&gt;/magicjar-backups/
+cp .env ~/Library/CloudStorage/&lt;클라우드&gt;/magicjar-backups/env-$(date +%Y%m%d)</pre>
+  </div>
+
+  <h2>5. 복원 — pg-restore.sh (실증 완료)</h2>
+  <div class="card">
+    <pre># 1) dry-run — 복원 0건, dump 내용 미리보기
+bash scripts/backup/pg-restore.sh --dry-run
+
+# 2) 연습/검증 — 임시 DB에 복원 (운영 무손상)
+bash scripts/backup/pg-restore.sh --target-db magicjar_restore_test --drop-after
+
+# 3) 운영 DB 전체 복구 (DR — 앱 컨테이너 정지 선행)
+bash scripts/backup/pg-restore.sh --target-db magicjar --confirm-prod</pre>
+    <p><span class="badge ok">실증 evidence</span> 2026-06-06 dump(56MB)를 임시 DB에 복원 — 테이블 56=56 · flyway V70=V70 · candle 2,545,735=2,545,735 · instrument 3,600=3,600 · 자격증명 2=2 row-level 일치 확인 후 임시 DB DROP (운영 0 touch).</p>
+    <p class="muted">새 PC 전체 복원(설치→clone→.env→인프라→restore→배포→검증)은 <a href="new-pc-migration-runbook.md">new-pc-migration-runbook.md</a> C-1~C-7 참조.</p>
+  </div>
+
+  <h2>6. cron 등록 (자동화 가동 — 사용자 1회 실행)</h2>
+  <div class="card">
+    <pre>crontab -e   # 아래 2줄 추가
+
+0 3 * * * cd /Users/ak-song/magic_ch1 && bash scripts/backup/pg-dump-daily.sh >> _workspace/backups/postgres/cron.log 2>&1
+30 3 * * * cd /Users/ak-song/magic_ch1 && bash scripts/backup/redis-snapshot.sh >> _workspace/backups/redis/cron.log 2>&1</pre>
+    <p class="muted">등록 확인: <code>crontab -l</code> · 동작 확인: 다음날 <code>ls _workspace/backups/postgres/daily/</code> + <code>cron.log</code></p>
+  </div>
+
+  <footer>
+    권위: ADR 0096 (P0-OPS-4 DR/backup) · ADR 0105 (1m 캔들 1년 한도) · 이력: 2026-06-06 감사에서 "스크립트만 존재·cron 미등록·실행 0회" 발견 → 첫 백업 실행 + restore 실증 + 본 가이드 발행 (PR #766 사이클) · 작성: orchestrator
+  </footer>
+</main>
+</body>
+</html>

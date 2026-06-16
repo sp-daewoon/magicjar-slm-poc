@@ -1,0 +1,11 @@
+# real-kis profile 오버라이드
+# PR-6+ 활성화 예정: 실전 KIS 계좌 endpoint 설정
+# 실계좌 이중 게이트 (CLAUDE.md 운영 함정 §4):
+#   MAGICJAR_MODE=REAL + MAGICJAR_ALLOW_REAL=true 둘 다여야 실주문 활성
+
+# 예시 (PR-6에서 채움):
+# magicjar:
+#   mode: REAL
+#   allow-real: true
+#   kis:
+#     base-url: https://openapi.koreainvestment.com:9443

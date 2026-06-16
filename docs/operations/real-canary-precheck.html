@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>REAL canary 사전점검서 — 설정값과 기대 결과</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 54px; }
+    header {
+      display: grid;
+      gap: 14px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .score {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .score strong { font-size: 40px; line-height: 1; }
+    .bar {
+      height: 10px;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8edf4;
+    }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .okbar { background: var(--ok); }
+    .warnbar { background: var(--warn); }
+    .badbar { background: var(--bad); }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(112px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .step {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 42%;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .step b { display: block; margin-bottom: 6px; }
+    .step small { color: var(--muted); }
+    .callout {
+      margin-top: 16px;
+      padding: 15px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+    .callout.ok { background: var(--soft-ok); border-color: #b7e2c1; }
+    .callout.warn { background: var(--soft-warn); border-color: #f1d19b; }
+    .callout.bad { background: var(--soft-bad); border-color: #f3b8b1; }
+    .small { font-size: 13px; }
+    @media (max-width: 900px) {
+      .span-4, .span-6, .span-8 { grid-column: span 12; }
+      .flow { grid-template-columns: repeat(7, 160px); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><span class="badge info">사전점검서 — 최고 관리자 직접 준비용</span></div>
+    <h1>REAL canary 사전점검서</h1>
+    <p class="muted">발행: 2026-06-05 (orchestrator) · 권위 절차: <code>docs/operations/real-canary-runbook.md</code> · 진행 추적: <code>docs/operations/real-canary-checklist.md</code></p>
+    <p>이 문서는 "<strong>이 값을 이렇게 설정하면, 이런 결과가 된다</strong>"를 한눈에 보는 사용자용 가이드입니다.
+       하나씩 직접 준비하시면 오케스트라가 체크리스트(md)에서 항목별로 실측 검증 후 ✅ 처리합니다.</p>
+  </header>
+
+  <h2>0. 전체 그림 — canary 당일에 일어나는 일</h2>
+  <div class="card span-12">
+    <div class="flow">
+      <div class="step">1. 캔들 마감<br/><span class="muted">WS tick → 1m 봉</span></div>
+      <div class="step">2. 전략 평가<br/><span class="muted">내 조건식 충족?</span></div>
+      <div class="step">3. 시그널<br/><span class="muted">BUY/SELL 기록</span></div>
+      <div class="step">4. 리스크 게이트<br/><span class="muted">손실한도·예산·수량</span></div>
+      <div class="step">5. hard cap<br/><span class="muted">canary 최후 방어선</span></div>
+      <div class="step">6. KIS 실주문<br/><span class="muted">TTTC tr_id</span></div>
+      <div class="step">7. 체결·알림<br/><span class="muted">Slack + 화면</span></div>
+    </div>
+    <p class="muted">모든 단계가 DB·로그에 1건 단위로 남고, 종료 후 그 흔적이 readiness 평가의 evidence가 됩니다.</p>
+  </div>
+
+  <h2>1. 전략 만들기 — 빌더에서 이렇게 설정하세요</h2>
+  <div class="grid">
+    <div class="card span-6">
+      <h3>권장 전략 프로필 (canary 1회차)</h3>
+      <table>
+        <tr><th>항목</th><th>권장값</th><th>이렇게 하면</th></tr>
+        <tr><td>종목</td><td>대형주 1개 (예: 005930)</td><td>유동성 충분 → 시장가 슬리피지 최소</td></tr>
+        <tr><td>인터벌</td><td>5m 이상 권장</td><td>1m보다 시그널 빈도 낮음 → 일일 cap 여유</td></tr>
+        <tr><td>매수 조건</td><td>이미 MOCK에서 검증한 조건식 그대로</td><td>"전략이 좋은가"가 아니라 "배관이 안전한가"를 보는 날 — 조건은 바꾸지 않기</td></tr>
+        <tr><td>Sizing fraction</td><td>최소 (0.01 수준)</td><td>예산 기반 수량이 작아짐 — 어차피 hard cap이 1주로 막지만 이중 안전</td></tr>
+        <tr><td><strong>분할 매수</strong></td><td><span class="badge warn">미사용 (OFF)</span></td><td>canary 1회차는 단순 경로. PRICE_DROP 다회차는 미패치(F-1-OBS) — 분할 canary는 패치 후 2회차에서</td></tr>
+        <tr><td>손절(fixedStopLoss)</td><td>-1.0% 내외</td><td>아래 §2-B 표 참고 — 1주 기준 손실 수백 원 단위</td></tr>
+        <tr><td>익절(takeProfitPct)</td><td>+1.5% 내외</td><td>도달 시 전량 매도 시그널</td></tr>
+      </table>
+      <p class="muted">저장 → 백테스트 1회 통과 → ACTIVE 전환까지가 "전략 준비 완료"입니다. canary 당일엔 이 전략 1개만 ACTIVE여야 합니다(나머지 전부 일시정지).</p>
+    </div>
+    <div class="card span-6">
+      <h3>왜 이렇게 보수적인가</h3>
+      <ul>
+        <li>canary의 목적은 <strong>수익이 아니라 배관 검증</strong> — 시그널→주문→체결→알림이 실돈에서 정확히 1:1 추적되는지</li>
+        <li>전략 수익성은 MOCK·백테스트가 이미 검증 — 같은 조건을 그대로 가져가야 비교가 됨</li>
+        <li>실패해도 잃는 돈이 "용돈 수준"이 되도록 모든 한도를 겹겹이 — 아래 §2가 그 계산</li>
+      </ul>
+      <h3 style="margin-top:18px">준비 순서 요약</h3>
+      <ul>
+        <li>① 전략 생성·백테스트 (지금부터 가능)</li>
+        <li>② MOCK으로 며칠 관찰 — 시그널·주문이 기대대로 (지금 단계)</li>
+        <li>③ 체크리스트 G/K/P/S/O 항목 준비 (아래 §3)</li>
+        <li>④ 실행일 결정 → 당일 아침 staging 30분 → REAL ON</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>2. 설정값 → 기대 결과 매트릭스</h2>
+
+  <div class="card span-12">
+    <h3>2-A. canary hard cap ENV 3종 (.env에 입력 — ADR 0109)</h3>
+    <table>
+      <tr><th>ENV</th><th>권장값</th><th>이 값이면 어떤 결과가 되나</th><th>초과 시 시스템 반응</th></tr>
+      <tr><td><code>MAGICJAR_CANARY_MAX_ORDER_QTY</code></td><td><strong>1</strong></td><td>어떤 주문도 1주를 넘을 수 없음 — 전략·예산 계산이 실수해도 1주</td><td>주문이 KIS로 나가기 전 REJECTED(CANARY_QTY_CAP) + Slack 알림</td></tr>
+      <tr><td><code>MAGICJAR_CANARY_MAX_ORDER_NOTIONAL_KRW</code></td><td><strong>100000</strong></td><td>1건당 최대 10만원 — 10만원 넘는 주가 종목은 1주도 거부됨(종목 선정 시 주가 확인)</td><td>REJECTED(CANARY_NOTIONAL_CAP)</td></tr>
+      <tr><td><code>MAGICJAR_CANARY_MAX_ORDERS_PER_DAY</code></td><td><strong>5</strong></td><td>하루 REAL 주문 5건에서 멈춤 — 매수+매도 합산이므로 실질 2~3 사이클</td><td>6번째부터 REJECTED(CANARY_DAILY_CAP) — 다음날 자동 리셋</td></tr>
+    </table>
+    <p class="muted">3개 모두 0 또는 미설정이면 cap 비활성(일반 운용) — canary 당일엔 반드시 3개 다 설정돼 있어야 하며 체크리스트에서 제가 printenv로 실측 확인합니다. MOCK 모드에서는 cap이 작동하지 않으므로 지금 미리 넣어둬도 현 운용에 영향 없습니다.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card span-6">
+      <h3>2-B. 최악 손실 시나리오 계산 (권장값 기준)</h3>
+      <table>
+        <tr><th>시나리오</th><th>계산</th><th>기대 결과</th></tr>
+        <tr><td>정상 손절</td><td>70,000원 종목 1주 × -1%</td><td><strong>-700원/회</strong></td></tr>
+        <tr><td>하루 전부 손절 (cap 5건 = 매수3·매도2 가정)</td><td>3회 × -700원 + 수수료</td><td>약 <strong>-3,000원 수준</strong></td></tr>
+        <tr><td>손실한도 도달</td><td>RiskConfig dailyLossLimit=50,000원</td><td>-5만원 도달 시 그날 BUY 전면 차단 (이론상 상한)</td></tr>
+        <tr><td>최악(갭 하락 + 손절 미체결)</td><td>1주 notional 10만원이 휴지가 되는 극단 가정</td><td><strong>-10만원이 절대 상한</strong> — 동시 보유 1종목 한도 때문</td></tr>
+      </table>
+      <p class="muted">즉 겹겹의 한도로 "이론상 최악 -10만원, 현실적 기대 -수천 원 내" 박스가 만들어집니다.</p>
+    </div>
+    <div class="card span-6">
+      <h3>2-C. RiskConfig (SettingsModal에서 설정)</h3>
+      <table>
+        <tr><th>항목</th><th>권장값</th><th>기대 결과</th></tr>
+        <tr><td>dailyLossLimitAmount</td><td>50,000원</td><td>당일 실현손실 -5만원 도달 → BUY BLOCKED (Slack P0)</td></tr>
+        <tr><td>maxTradesPerDay (전략당)</td><td>5</td><td>hard cap과 이중 — 전략 단위로도 5건 제한</td></tr>
+        <tr><td>maxConcurrentPositions</td><td>1</td><td>다른 종목 진입 자체가 차단 — 노출 1종목 고정</td></tr>
+        <tr><td>maxPositionAmount</td><td>100,000원</td><td>종목 예산 — Sizing 수량 계산의 분모</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <h2>3. 기대 타임라인 — 당일 "정상"이라면 이렇게 보입니다</h2>
+  <div class="card span-12">
+    <table>
+      <tr><th>시각</th><th>기대 이벤트</th><th>확인 위치</th><th>이상 신호 (즉시 중단 후보)</th></tr>
+      <tr><td>08:30~09:00</td><td>staging dwell 종료 → REAL 게이트 ON, WS 구독 10종목</td><td>docker logs·체크리스트</td><td>WS 미연결·ERROR 발생</td></tr>
+      <tr><td>09:00~09:30</td><td>첫 시그널 발생 시: 시그널 row → 리스크 ALLOWED → 주문 REQUESTED→ACK (tr_id TTTC*) → 수 초 내 체결 → Slack "체결" 알림에 전략명·수량·가격</td><td>주문내역 화면 + Slack</td><td>EGW00201 발생(주문 우선권 fix 검증 실패) · ACK 후 5분+ 무체결 · 알림 누락</td></tr>
+      <tr><td>장중 상시</td><td>모든 주문 = 이 전략·이 종목·≤1주. cap 초과 시도는 REJECTED로 기록만</td><td>order_request 테이블</td><td>다른 종목/2주+ 주문 출현(즉시 KillSwitch)</td></tr>
+      <tr><td>익절/손절 도달</td><td>SELL 시그널 → 매도 체결 → 실현손익 기록 → 포지션 0</td><td>포지션 화면</td><td>포지션 불일치 알림 반복</td></tr>
+      <tr><td>15:30 마감</td><td>미체결 잔여 취소 → MOCK 복귀(G-2 false) → evidence 수집</td><td>runbook §5-3·§6</td><td>—</td></tr>
+    </table>
+    <p class="muted">"이상 신호" 발생 시 대응은 한 가지뿐입니다 — <strong>화면에서 KillSwitch ON</strong> (1클릭, 신규 주문 전면 차단). 이후 원인 분석은 오케스트라 몫입니다.</p>
+  </div>
+
+  <h2>4. 사용자가 직접 준비할 것 (체크리스트 md와 1:1)</h2>
+  <div class="card span-12">
+    <table>
+      <tr><th>#</th><th>준비 항목</th><th>어디서</th><th>오케스트라 검증 방법</th></tr>
+      <tr><td>U-1</td><td>canary용 전략 1개 생성 + 백테스트 통과 (분할매수 OFF·손절/익절 설정)</td><td>전략 빌더</td><td>strategy row + 백테스트 결과 실측</td></tr>
+      <tr><td>U-2</td><td>MOCK 관찰 며칠 — 시그널·주문이 기대대로 도는지 함께 확인</td><td>주문내역·시그널 화면</td><td>관찰 기간 주문/시그널 정합 리포트</td></tr>
+      <tr><td>U-3</td><td>KIS <strong>실전 주문용(vps) 키</strong> 발급 + ⚙️ SettingsModal 등록</td><td>KIS 개발자센터 + 설정 화면</td><td>credential row(REAL) + 잔고조회 200</td></tr>
+      <tr><td>U-4</td><td>KIS IP 화이트리스트에 실행 호스트 공인 IP 등록</td><td>KIS 개발자센터</td><td>실키 조회 1회 성공으로 간접 확인</td></tr>
+      <tr><td>U-5</td><td>.env에 hard cap 3종 + 실행일 아침 G-1·G-2(REAL 게이트) 입력</td><td>.env 직접 편집</td><td>printenv 3종+게이트 실측</td></tr>
+      <tr><td>U-6</td><td>RiskConfig 4종 입력 (§2-C 값)</td><td>SettingsModal</td><td>risk_config row 실측</td></tr>
+      <tr><td>U-7</td><td>실거래 동의 (G-3)</td><td>설정 화면 동의 토글</td><td>consent API 응답</td></tr>
+      <tr><td>U-8</td><td>실행일 결정 + 당일 아침 통보</td><td>—</td><td>staging 30분 dwell부터 제가 진행</td></tr>
+    </table>
+  </div>
+
+  <h2>5. 사전 패치 권고 (canary 전 오케스트라가 처리)</h2>
+  <div class="grid">
+    <div class="card span-6">
+      <h3><span class="badge warn">권고</span> F-1-OBS — PRICE_DROP 다회차 주입</h3>
+      <p>분할매수 PRICE_DROP 트리거의 2회차+ 재진입이 현재 비활성(미패치). canary 1회차(분할 OFF)에는 영향 없지만, <strong>분할 canary(2회차)를 하려면 선행 패치 필수</strong>.</p>
+    </div>
+    <div class="card span-6">
+      <h3><span class="badge info">선택</span> 재배포 WS 공백 graceful 정리</h3>
+      <p>재배포 직후 KIS 잔존 세션으로 다음 정각까지 WS 공백 발생 — canary <strong>당일 아침 재배포 금지</strong>(전일 저녁 배포 완료)로 절차상 회피 가능. 패치는 선택.</p>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-top:28px">본 점검서는 가이드이며 실행 절차의 단일 권위는 runbook입니다. 진행 체크는 <code>docs/operations/real-canary-checklist.md</code>에서 항목별 ✅로 추적합니다.</p>
+</main>
+</body>
+</html>

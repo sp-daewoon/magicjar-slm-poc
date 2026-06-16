@@ -1,0 +1,267 @@
+# magicJar 통합 스택 (인프라 3 + 앱 4)
+# 사용:
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml ps
+#
+# 인프라만 띄우려면: docker-compose.infra.yml 사용
+# 핫 리로드 개발 모드: -f docker-compose.yml -f docker-compose.dev.yml
+
+name: magicjar
+
+services:
+  # ─────────── 인프라 3 ───────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: magicjar-postgres
+    environment:
+      POSTGRES_DB: magicjar
+      POSTGRES_USER: magicjar
+      POSTGRES_PASSWORD: magicjar
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports: ["5432:5432"]
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "magicjar", "-d", "magicjar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    # 공식 Apache Kafka 이미지 (KRaft 모드). bitnami/kafka는 2025-08 이후 일부 태그 폐기되어
+    # 공식 apache/kafka로 전환 (ADR 0024 자율 hotfix — Phase 4).
+    image: apache/kafka:3.7.0
+    container_name: magicjar-kafka
+    environment:
+      TZ: Asia/Seoul
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: controller,broker
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /tmp/kafka-logs
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+      # 디스크 보호 — mock tick 1초 1회 누적으로 /tmp/kafka-logs 가득 차는 사고 차단.
+      # 토픽별 retention 1시간(또는 200MB), 세그먼트 5분 단위 롤. 운영 진입 시 확장.
+      KAFKA_LOG_RETENTION_HOURS: "1"
+      KAFKA_LOG_RETENTION_BYTES: "209715200" # 200MB per partition
+      KAFKA_LOG_SEGMENT_BYTES: "10485760"    # 10MB segment
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: "60000"
+    ports: ["9092:9092"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: magicjar-redis
+    environment:
+      TZ: Asia/Seoul
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─────────── Dozzle (모든 컨테이너 로그 web UI) ───────────
+  # amir20/dozzle — 컨테이너 로그 실시간 web viewer + v10 alert/webhook 보조 관제.
+  # localhost:8888 접속 → 모든 컨테이너 stdout/stderr 한 화면.
+  # 알림 destination/alert rule은 /data에 저장되므로 dozzle_data volume으로 재시작 후에도 보존.
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: magicjar-dozzle
+    environment:
+      TZ: Asia/Seoul
+      DOZZLE_LEVEL: info
+      # 한국어 인코딩 처리 (UTF-8 보장)
+      DOZZLE_NO_ANALYTICS: "true"
+    volumes:
+      # docker socket 읽기 전용 mount — 모든 컨테이너 로그 read
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Dozzle v10 notifications/alerts 설정 영속
+      - dozzle_data:/data
+    ports: ["${DOZZLE_HOST_PORT:-8888}:8080"]
+    # healthcheck 미정의 — dozzle scratch 기반 이미지라 wget/curl 없음. 컨테이너 자체는 가벼워 영향 0.
+
+  # ─────────── Kafka UI (디버깅용) ───────────
+  # provectuslabs/kafka-ui — 토픽 메시지 viewer, consumer group lag, schema 등 GUI.
+  # localhost:8090에서 접속. dev/디버깅 전용 (운영 진입 시 제외 가능).
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: magicjar-kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Seoul
+      KAFKA_CLUSTERS_0_NAME: magicjar
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+      AUTH_TYPE: DISABLED
+    ports: ["${KAFKA_UI_HOST_PORT:-8090}:8080"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -qO- http://localhost:8080/actuator/health 2>&1 | grep -q UP || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ─────────── 앱 4 ───────────
+  api-app:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    image: magicjar/api:p4
+    container_name: magicjar-api
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # 데이터는 실 KIS 베이스. .env 전체를 컨테이너 env로 주입
+    # (KIS_*·NAVER_*·DART_*·ANTHROPIC_API_KEY 등 전 변수). environment 섹션이 우선.
+    env_file:
+      - ../.env
+    environment:
+      # default profile = dev,real-kis. mock 합성 0 (memory feedback_no_mock_data 정합).
+      # build-and-deploy.sh가 docker-compose.dev.yml override로 적용되며, 직접 호출 시도 안전.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev,real-kis}
+      # JVM 타임존 KST — 로그·LocalDate.now·KIS 시간 정합
+      TZ: Asia/Seoul
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
+      DB_URL: jdbc:postgresql://postgres:5432/magicjar
+      DB_USER: magicjar
+      DB_PASSWORD: magicjar
+      KAFKA_BOOTSTRAP: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      MAGICJAR_BATCH_BASE_URL: http://batch-app:8081
+      MAGICJAR_DEVLOG_DIR: /workspace/devlog
+      MAGICJAR_HARNESS_DASHBOARD_PATH: /workspace/dashboard.html
+      # Spring Boot relaxed binding override (PR-12 hotfix — backlog §12).
+      # env_file의 .env에 SPRING_DATASOURCE_URL=...localhost가 들어와도 environment block이 후순위 우선.
+      # IDE bootRun 시에는 application.yml ${DB_URL:fallback} placeholder가 .env의 localhost 값 사용.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/magicjar
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    # T22: 개발일지 HTML read-only mount (DevlogController가 read)
+    # T22 R2: 하네스 dashboard.html read-only 마운트 (HarnessController가 read)
+    volumes:
+      - ../_workspace/devlog:/workspace/devlog:ro
+      - ../_workspace/dashboard.html:/workspace/dashboard.html:ro
+    # 호스트 포트는 ${API_HOST_PORT} env로 override 가능. 기본은 8080.
+    ports: ["${API_HOST_PORT:-8080}:8080"]
+    # api-app이 Flyway 스키마 적용 완료까지 batch/consumer가 기다리도록 healthcheck 명시.
+    # Dockerfile에도 동일 healthcheck가 있지만 compose-level에서 service_healthy 조건에
+    # 사용하려면 여기에 다시 선언해야 함.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -qO- http://localhost:8080/actuator/health 2>/dev/null | grep -q UP || exit 1"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  batch-app:
+    build:
+      context: ../batch
+      dockerfile: Dockerfile
+    image: magicjar/batch:p4
+    container_name: magicjar-batch
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka: { condition: service_healthy }
+      redis: { condition: service_started }
+      api-app: { condition: service_healthy }   # api-app의 Flyway 완료 후 시작
+    env_file:
+      - ../.env
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev,real-kis}
+      TZ: Asia/Seoul
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
+      DB_URL: jdbc:postgresql://postgres:5432/magicjar
+      DB_USER: magicjar
+      DB_PASSWORD: magicjar
+      KAFKA_BOOTSTRAP: kafka:9092
+      REDIS_HOST: redis
+      # KIS 분산 토큰 store + secret 암호화 (R3-5c-3 + 1번 트랙).
+      # MAGICJAR_KIS_REDIS_TOKEN_ENABLED=true 시 Redisson client 등록 → redis:6379 연결 필요.
+      MAGICJAR_KIS_REDIS_TOKEN_ENABLED: ${MAGICJAR_KIS_REDIS_TOKEN_ENABLED:-false}
+      # Spring Boot relaxed binding override (PR-12 hotfix — backlog §12)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/magicjar
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # PR-19 hotfix — 부팅 시 KIS 종목 마스터 즉시 sync (시드만 있는 상태 → universe 전체로 보강).
+      # KIS 인증 불필요 (`https://new.real.download.dws.co.kr/...` zip 다운로드).
+      MAGICJAR_INSTRUMENT_SYNC_AT_BOOT: "true"
+    ports: ["${BATCH_HOST_PORT:-8081}:8081"]
+
+  consumer-app:
+    build:
+      context: ../consumer
+      dockerfile: Dockerfile
+    image: magicjar/consumer:p4
+    container_name: magicjar-consumer
+    depends_on:
+      kafka: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      api-app: { condition: service_healthy }   # api-app의 Flyway 완료 후 시작
+    env_file:
+      - ../.env
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev,real-kis}
+      TZ: Asia/Seoul
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
+      DB_URL: jdbc:postgresql://postgres:5432/magicjar
+      DB_USER: magicjar
+      DB_PASSWORD: magicjar
+      KAFKA_BOOTSTRAP: kafka:9092
+      REDIS_HOST: redis
+      # 1번 트랙 (T2~T3) — KIS 키 암호화 master key + 시드 사용자 등록 데이터.
+      # mock profile에선 master key 검증 skip. dev/prd에선 fail-fast.
+      MAGICJAR_SEED_KIS_APP_KEY: ${KIS_MOCK_APP_KEY:-}
+      MAGICJAR_SEED_KIS_APP_SECRET: ${KIS_MOCK_APP_SECRET:-}
+      MAGICJAR_SEED_KIS_ACCOUNT_CANO: ${KIS_ACCOUNT_CANO:-}
+      MAGICJAR_SEED_KIS_ACCOUNT_PRDT: ${KIS_ACCOUNT_PRDT:-01}
+      MAGICJAR_SEED_KIS_HTS_ID: ${KIS_HTS_ID:-PLACEHOLDER}
+      # Spring Boot relaxed binding override (PR-12 hotfix — backlog §12)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/magicjar
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    ports: ["${CONSUMER_HOST_PORT:-8082}:8082"]
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    image: magicjar/frontend:p4
+    container_name: magicjar-frontend
+    depends_on:
+      api-app: { condition: service_started }
+    environment:
+      TZ: Asia/Seoul
+    ports: ["3000:80"]
+
+volumes:
+  pg_data:
+  dozzle_data:

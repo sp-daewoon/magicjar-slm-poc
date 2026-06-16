@@ -1,0 +1,12 @@
+# dev profile 오버라이드
+# PR-6+ 활성화 예정: KIS endpoint, base URL, dev-specific 설정 등
+#
+# 주의: dev profile은 거래 모드가 아니다. 기본 profile이 dev,real-kis 이므로
+# 실전/모의 주문 경계는 MAGICJAR_MODE, MAGICJAR_ALLOW_REAL, 사용자 동의, 계좌 선택이 맡는다.
+# Scenario Replay는 별도 QA 메뉴이며 KIS/order 경로를 사용하지 않는다.
+
+# 예시 (PR-6에서 채움):
+# magicjar:
+#   kis:
+#     base-url: https://openapi.koreainvestment.com:9443
+#     ws-url: ws://ops.koreainvestment.com:21000

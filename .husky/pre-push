@@ -1,0 +1,93 @@
+#!/usr/bin/env sh
+# magicJar pre-push — ADR 0009·0010·0015·0049
+
+set -e
+
+# 0) 현재 브랜치
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+# 0-1) 변경 파일 진단 (ADR 0049 — frontend 변경 시 pnpm 검증 조건부 실행)
+#      upstream이 있으면 그 diff, 없으면 origin/main 기준, 그래도 없으면 HEAD~1
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  CHANGED_FILES="$(git diff --name-only '@{u}'..HEAD 2>/dev/null || true)"
+elif git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+  CHANGED_FILES="$(git diff --name-only origin/main..HEAD 2>/dev/null || true)"
+else
+  CHANGED_FILES="$(git diff --name-only HEAD~1..HEAD 2>/dev/null || true)"
+fi
+
+# 1) main / release/* 직접 push 차단 (원격 branch protection 보조)
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "✗ pre-push: main 브랜치 직접 푸시는 금지입니다 (ADR 0009)."
+      echo "  ↳ agent/*/* 또는 chore|docs|hotfix/* 브랜치에서 PR을 만들어 주세요."
+      exit 1
+      ;;
+    refs/heads/release/*)
+      # 신규 ref 생성(remote_sha = 0000…)은 베이스라인 컷이라 허용.
+      # 이미 존재하는 release/* ref에 대한 update/delete만 차단 = immutable 보존.
+      ZERO="0000000000000000000000000000000000000000"
+      if [ "$remote_sha" = "$ZERO" ]; then
+        echo "ℹ pre-push: release/* 신규 베이스라인 push 허용 (ADR 0027)."
+      else
+        echo "✗ pre-push: release/* 브랜치는 immutable(체크아웃 전용)입니다 (ADR 0027)."
+        echo "  ↳ 기존 release/* (v0·v1 …) 영구 베이스라인 백업 — update·delete 금지."
+        echo "  ↳ 살 붙이기·버그 수정은 main 트렁크에서 진행하세요."
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+# 2) 브랜치명 규칙 경고 (실패시키진 않음)
+case "$BRANCH" in
+  main|agent/*/*|chore/*|docs/*|hotfix/*) ;;
+  *)
+    echo "⚠ pre-push: 브랜치명이 규약을 벗어납니다 — '$BRANCH'"
+    echo "  권장: agent/<agent>/<task> | chore/<slug> | docs/<slug> | hotfix/<slug>"
+    ;;
+esac
+
+# 3) Gradle check — wrapper script + jar 모두 있으면 실행, 없으면 skip
+if [ -x ./gradlew ] && [ -f gradle/wrapper/gradle-wrapper.jar ]; then
+  echo "→ ./gradlew check"
+  ./gradlew check -q --daemon || {
+    echo "✗ pre-push: ./gradlew check 실패."
+    exit 1
+  }
+else
+  echo "ℹ pre-push: Gradle wrapper 부재(script 또는 wrapper jar) — JVM 모듈 부트스트랩 후 활성화."
+fi
+
+# 3-1) frontend 변경 시 pnpm typecheck + build (ADR 0049)
+#      GitHub Actions release 트리거 한정 정책에 따라 frontend 검증도 pre-push 단독 책임.
+FRONTEND_CHANGED="$(printf '%s\n' "$CHANGED_FILES" | grep -E '^frontend/' || true)"
+if [ -n "$FRONTEND_CHANGED" ] && [ -d frontend ] && [ -f frontend/package.json ]; then
+  if command -v pnpm >/dev/null 2>&1; then
+    echo "→ frontend pnpm typecheck + build (변경된 frontend/* 감지)"
+    (
+      cd frontend && \
+      pnpm install --frozen-lockfile --silent && \
+      pnpm typecheck && \
+      pnpm build
+    ) || {
+      echo "✗ pre-push: frontend typecheck/build 실패 (ADR 0049)."
+      exit 1
+    }
+  else
+    echo "ℹ pre-push: pnpm 미설치 — frontend 검증 skip (release 컷 시점에 release.yml이 검증)."
+  fi
+fi
+
+# 4) agent/* 브랜치는 task 파일 존재 권고 (ADR 0018)
+case "$BRANCH" in
+  agent/*/*)
+    if ! ls _workspace/tasks/*.md > /dev/null 2>&1; then
+      echo "⚠ pre-push: 활성 task 파일이 없습니다 (ADR 0018)."
+      echo "  ↳ node scripts/task.mjs start --agent <a> --goal \"...\" 으로 등록하세요."
+    fi
+    ;;
+esac
+
+exit 0

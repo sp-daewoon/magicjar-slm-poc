@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>magicJar 자동매매 준비도 평가 - 2026-06-05</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d9e1ec;
+      --ok: #15803d;
+      --warn: #b45309;
+      --bad: #b42318;
+      --blue: #0b66c3;
+      --soft-ok: #eaf7ee;
+      --soft-warn: #fff4df;
+      --soft-bad: #fff0ef;
+      --soft-blue: #eaf3ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 34px 24px 54px; }
+    header {
+      display: grid;
+      gap: 14px;
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%);
+    }
+    h1, h2, h3 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: 30px; line-height: 1.2; }
+    h2 { margin-top: 34px; font-size: 22px; }
+    h3 { font-size: 17px; }
+    p { margin: 8px 0 0; }
+    code { padding: 1px 5px; border-radius: 5px; background: #eef2f7; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 16px; margin-top: 16px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .score {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .score strong { font-size: 40px; line-height: 1; }
+    .bar {
+      height: 10px;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e8edf4;
+    }
+    .bar > span { display: block; height: 100%; border-radius: inherit; }
+    .okbar { background: var(--ok); }
+    .warnbar { background: var(--warn); }
+    .badbar { background: var(--bad); }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.ok { color: var(--ok); background: var(--soft-ok); }
+    .badge.warn { color: var(--warn); background: var(--soft-warn); }
+    .badge.bad { color: var(--bad); background: var(--soft-bad); }
+    .badge.info { color: var(--blue); background: var(--soft-blue); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #344054; background: #f8fafc; font-size: 13px; }
+    tr:last-child td { border-bottom: 0; }
+    ul { margin: 10px 0 0 20px; padding: 0; }
+    li { margin: 6px 0; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(112px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+    .step {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+      position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: ">";
+      position: absolute;
+      right: -12px;
+      top: 42%;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .step b { display: block; margin-bottom: 6px; }
+    .step small { color: var(--muted); }
+    .callout {
+      margin-top: 16px;
+      padding: 15px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+    .callout.ok { background: var(--soft-ok); border-color: #b7e2c1; }
+    .callout.warn { background: var(--soft-warn); border-color: #f1d19b; }
+    .callout.bad { background: var(--soft-bad); border-color: #f3b8b1; }
+    .small { font-size: 13px; }
+    @media (max-width: 900px) {
+      .span-4, .span-6, .span-8 { grid-column: span 12; }
+      .flow { grid-template-columns: repeat(7, 160px); }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><span class="badge ok">현재 판단: MOCK 안정 운영 가능 · REAL은 canary 게이트 대기</span></div>
+    <h1>자동매매 준비도 평가 (autotrading-readiness)</h1>
+    <p class="muted">대상 커밋: main 4a9d5267 · 작성: 2026-06-05 13:00 KST · 직전 평가: 2026-06-04 (c03d40a1) · ADR 0108 구조</p>
+    <p>직전 평가가 지목한 P0 2건·P1 3건·P2 1건이 모두 머지·배포·라이브 실증되었다.
+       본 평가의 모든 점수 변동은 실측 evidence(§6)에 근거한다.</p>
+  </header>
+
+  <h2>종합 스코어</h2>
+  <div class="grid">
+    <div class="card span-4">
+      <h3>종합 자동매매 준비도</h3>
+      <div class="score"><strong>87</strong><span class="muted">/ 100 (직전 71, +16)</span></div>
+      <div class="bar"><span class="okbar" style="width:87%"></span></div>
+      <p class="muted">P0·P1 전건 해소. 잔여는 REAL canary evidence와 전략별 포지션 귀속.</p>
+    </div>
+    <div class="card span-4">
+      <h3>MOCK 기능 구현도</h3>
+      <div class="score"><strong>95</strong><span class="muted">/ 100 (직전 82, +13)</span></div>
+      <div class="bar"><span class="okbar" style="width:95%"></span></div>
+      <p class="muted">게이트·관측성·리플레이 정합·알림까지 qa Visual 3 시나리오 PASS.</p>
+    </div>
+    <div class="card span-4">
+      <h3>REAL 안전 운영 준비도</h3>
+      <div class="score"><strong>78</strong><span class="muted">/ 100 (직전 64, +14)</span></div>
+      <div class="bar"><span class="warnbar" style="width:78%"></span></div>
+      <p class="muted">rate limit·백필 안정화 + fail-closed 강화. 단 실계좌 canary evidence 0 — 상한 유지.</p>
+    </div>
+  </div>
+
+  <h2>한 줄 결론</h2>
+  <p>직전 평가의 "조건부 정상"에서 <strong>"MOCK 안정 운영 가능"</strong>으로 격상한다.
+     KIS rate limit 폭주·백필 무한 재시도·WS 구독 race·알림 노이즈가 모두 라이브 수치로 해소 확인되었고,
+     리플레이가 라이브 게이트와 같은 코드로 판정해 "리플레이는 샀는데 라이브는 안 산다" 의심을 이벤트로 설명한다.
+     REAL 무인 운용 진입의 잔여 게이트는 단 둘: <strong>소액 canary evidence</strong>와 <strong>전략별 포지션 귀속</strong>이다.</p>
+
+  <h2>직전 평가 우선순위 표 이행 현황</h2>
+  <table>
+    <tr><th>항목</th><th>약속 %</th><th>이행</th><th>evidence</th></tr>
+    <tr><td>P0 admin 백필 throttle/circuit breaker</td><td>+8</td><td><span class="badge ok">완료 PR #726</span></td><td>동일 8종목 연속 재실행: TPS 카운터 337 → 최대 5, 전건 THROTTLED 202</td></tr>
+    <tr><td>P0 1m 정렬·sanity 정정 + 3분류</td><td>+6</td><td><span class="badge ok">완료 PR #726</span></td><td>monotonic 경고 418,567줄 → 0줄. inserted/uncovered/failed 분리 응답</td></tr>
+    <tr><td>P1 캔들 stale reason 모델 + 화면 1줄</td><td>+5</td><td><span class="badge ok">완료 PR #729·#727</span></td><td>candle-health API 라이브 응답(FRESH/OK_REALTIME·NO_DATA/WS_NOT_SUBSCRIBED) + 종목 상세 배지 qa PASS</td></tr>
+    <tr><td>P1 리플레이-라이브 게이트 정합</td><td>+4</td><td><span class="badge ok">완료 PR #730</span></td><td>장외 기간 리플레이 실행 시 GATE_SKIPPED×5 + GATE_NOT_SIMULATED×4 표시 (qa 실측)</td></tr>
+    <tr><td>P1 REAL canary runbook</td><td>+3</td><td><span class="badge warn">미착수 (Phase C)</span></td><td>사용자 결재 대기</td></tr>
+    <tr><td>P2 알림 친절도·감사 trail</td><td>+3</td><td><span class="badge ok">완료 PR #728</span></td><td>전략명·source·한국어 사유·조치 가이드 1줄 + WS_RECONNECT_LOST 오탐 grace 정정</td></tr>
+  </table>
+
+  <h2>검증 evidence (전부 라이브 실측)</h2>
+  <div class="grid">
+    <div class="card span-6">
+      <h3>Before → After 수치</h3>
+      <table>
+        <tr><th>항목</th><th>직전(6/4)</th><th>현재(6/5)</th></tr>
+        <tr><td>api KIS TPS 초과 (5분 윈도)</td><td>57~126 지속</td><td><strong>0건 / 16h+</strong></td></tr>
+        <tr><td>admin 백필 연속 8종목 TPS</td><td>1→155→337</td><td><strong>최대 5 (게이트 차단 신호뿐)</strong></td></tr>
+        <tr><td>sanity monotonic 경고</td><td>418,567줄</td><td><strong>0줄</strong></td></tr>
+        <tr><td>KIS WS 재구독</td><td>1종목 (8종목 2일 stale)</td><td><strong>10종목 · 전 종목 1m 실시간</strong></td></tr>
+        <tr><td>정각 단절 Slack WARN</td><td>매시 + 오탐 3건</td><td><strong>INFO 강등 · 오탐 0</strong></td></tr>
+        <tr><td>FULL_FILL audit 정합</td><td>53건(정상 11)</td><td><strong>재발 0 + completed_at 11건 복원</strong></td></tr>
+      </table>
+    </div>
+    <div class="card span-6">
+      <h3>qa Visual (PR #733 · 헌법 §9-2)</h3>
+      <ul>
+        <li>종목 상세 캔들 수집 배지 — PASS (API 교차확인, 가짜 FRESH 0)</li>
+        <li>리플레이 게이트 이벤트 표시 — PASS (sandbox 실행 실측)</li>
+        <li>전략 리서치 신규 화면 — PASS (콘솔 에러 0)</li>
+        <li>발견 P2 2건(favicon 404·GATE 라벨)도 당일 fix (PR #736)</li>
+      </ul>
+      <p class="muted">4 모듈 docker logs ERROR 0건 · 테스트: gradle check + frontend 전체 GREEN (SymbolDetailPage 포맷 기대값 1건 정정 PR #737 포함)</p>
+    </div>
+  </div>
+
+  <h2>남은 위험</h2>
+  <div class="grid">
+    <div class="card span-6">
+      <h3><span class="badge warn">P1</span> REAL 장시간 canary 부재 (유지)</h3>
+      <p>MOCK 흐름·단위·Visual 검증은 충분하나, 실계좌 최소수량·킬스위치·체결백필·거절알림의 장중 1일 canary evidence가 없다.
+         REAL 무인 운용의 마지막 게이트. (Phase C-1)</p>
+    </div>
+    <div class="card span-6">
+      <h3><span class="badge warn">P1</span> 전략별 포지션 귀속 (유지)</h3>
+      <p>동일 종목 다전략 시 "이 전략이 산 물량" 분리 추적 부재 — 익절/청산이 사용자+종목 포지션 기준.
+         스키마·도메인 변경이라 architect ADR 필수. (Phase C-2)</p>
+    </div>
+    <div class="card span-6">
+      <h3><span class="badge info">P2</span> 원격 브랜치 잔재 168개</h3>
+      <p>origin에 codex/·agent/ 브랜치 168개 누적 — 전수 흡수 검증 후 일괄 삭제 결재 필요 (운영 위험은 아님, 인지 부채).</p>
+    </div>
+    <div class="card span-6">
+      <h3><span class="badge info">P2</span> 장기 가동 evidence 짧음</h3>
+      <p>이번 fix들의 연속 가동 검증은 수 시간 단위 — 1주 SLO 윈도(헌법 §9-1) 통과를 다음 평가에서 확인 권장.</p>
+    </div>
+  </div>
+
+  <h2>완성도를 더 채우는 순서</h2>
+  <table>
+    <tr><th>남은 %</th><th>우선순위</th><th>해야 할 일</th><th>완료 기준</th></tr>
+    <tr><td>+5</td><td>P1</td><td>REAL canary runbook(architect spec) + 소액 1일 canary 실행</td><td>장중 1일 canary: 시그널→리스크→KIS 결과 0/1건 단위 완전 추적 evidence</td></tr>
+    <tr><td>+5</td><td>P1</td><td>전략별 포지션 귀속 ADR + 구현 (다전략 ownership)</td><td>동일 종목 2전략 동시 운용 시 익절/청산이 전략별 물량만 처리</td></tr>
+    <tr><td>+3</td><td>P2</td><td>1주 SLO 윈도 무사고 가동 (S-1~S-5)</td><td>주간 점검에서 SLO 위반 0 + Slack P1/P2 alert 0</td></tr>
+  </table>
+
+  <h2>직전 동종 평가 대비 diff (§9 — ADR 0108)</h2>
+  <table>
+    <tr><th>스코어</th><th>2026-06-04</th><th>2026-06-05</th><th>Δ</th><th>변동 근거</th></tr>
+    <tr><td>종합</td><td>71</td><td><strong>87</strong></td><td>+16</td><td>우선순위 표 +26 중 +23 이행(REAL canary +3 잔여) 반영, MOCK·REAL 평균 정합으로 보수 산정</td></tr>
+    <tr><td>MOCK</td><td>82</td><td><strong>95</strong></td><td>+13</td><td>게이트·관측성·리플레이·알림 전건 실증 + qa Visual PASS. 잔여 -5: 포지션 귀속·장기 가동</td></tr>
+    <tr><td>REAL</td><td>64</td><td><strong>78</strong></td><td>+14</td><td>rate limit·백필·fail-closed 강화 실증. canary evidence 0이라 80선 상한 유지</td></tr>
+  </table>
+
+  <p class="muted" style="margin-top:28px">권장 운영 상태: MOCK 자동매매 + 리플레이 QA 상시 운용 가능. REAL은 Phase C(canary + 포지션 귀속) 완료 후 소액부터 단계 진입.
+     본 평가는 ADR 0108 템플릿 9 섹션 정합 · 발행: orchestrator · 실측 출처: 2026-06-04~05 사이클 PR #715~#737.</p>
+</main>
+</body>
+</html>

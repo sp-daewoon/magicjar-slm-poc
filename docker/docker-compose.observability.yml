@@ -1,0 +1,83 @@
+# magicJar 관측 스택 (Prometheus + Grafana) — ADR 0094 P0-OPS-2
+#
+# 운영 단계 baseline 진입의 가장 기본 인프라.
+#   prometheus → 3 모듈 actuator/prometheus 15s scrape + 7일 retention
+#   grafana    → datasource auto-provision + 기본 JVM/HTTP/KIS/Kafka dashboard
+#
+# 사용:
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.observability.yml up -d
+#   docker compose -f docker/docker-compose.observability.yml up -d   # 관측만
+#
+# 포트 매트릭스 (사용자 frontend :3000 충돌 회피):
+#   prometheus  → :9090
+#   grafana     → :3001 (frontend :3000 분리)
+#
+# Grafana 초기 로그인: admin / ${GRAFANA_ADMIN_PASSWORD:-admin}
+
+name: magicjar
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: magicjar-prometheus
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Seoul
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=2GB
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports: ["${PROMETHEUS_HOST_PORT:-9090}:9090"]
+    extra_hosts:
+      # host.docker.internal — IDE bootRun 시 호스트 :8080·:8081·:8082 scrape (Linux 호환)
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -qO- http://localhost:9090/-/healthy 2>&1 | grep -q 'Healthy' || exit 1"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: magicjar-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Seoul
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # 익명 접근 허용 (개발 편의 — 운영 진입 시 false)
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # 익명 사용자 sign-up 차단 + 본인 계정 admin만 변경 가능
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports: ["${GRAFANA_HOST_PORT:-3001}:3000"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "wget -qO- http://localhost:3000/api/health 2>&1 | grep -q '\"database\": \"ok\"' || exit 1"
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+volumes:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="springAppName" source="spring.application.name" defaultValue="magicjar-batch"/>
+    <springProperty scope="context" name="springActiveProfiles" source="spring.profiles.active" defaultValue="default"/>
+
+    <!--
+        ADR 0094 P0-OPS-1 — logback JSON encoder + MDC 5 키 표준화 (3 모듈 정합 LOCK).
+        batch는 Spring Batch job 기반(HTTP entrypoint 0 + Kafka consumer 0)이나 logback 패턴은
+        api·consumer와 1:1 정합 — 운영 검색·grep 정합성 보존. job 진입점에 traceId 부착 helper 추가
+        시 자동 출력(plain) / JSON 직렬화(prd).
+
+        profile 분기 / MDC 키 정합 매트릭스는 api/.../logback-spring.xml 참고.
+    -->
+    <appender name="PLAIN_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{HH:mm:ss.SSS} [%X{traceId:--}] [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="JSON_STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <fieldNames>
+                <timestamp>ts</timestamp>
+                <message>msg</message>
+                <thread>thread</thread>
+                <logger>logger</logger>
+                <level>level</level>
+                <levelValue>[ignore]</levelValue>
+                <version>[ignore]</version>
+            </fieldNames>
+            <customFields>{"application":"${springAppName}","profiles":"${springActiveProfiles}"}</customFields>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>spanId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>orderId</includeMdcKeyName>
+            <includeMdcKeyName>strategyId</includeMdcKeyName>
+            <timeZone>Asia/Seoul</timeZone>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="PLAIN_STDOUT"/>
+    </root>
+
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="PLAIN_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="DEBUG"/>
+        <logger name="org.flywaydb" level="INFO"/>
+    </springProfile>
+
+    <springProfile name="prd">
+        <root level="INFO">
+            <appender-ref ref="JSON_STDOUT"/>
+        </root>
+        <logger name="kr.spdaewoon.magicjar" level="INFO"/>
+    </springProfile>
+</configuration>
