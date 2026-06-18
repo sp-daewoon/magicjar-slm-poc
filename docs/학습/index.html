@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>magicJar SLM Lab 학습서 — 목차</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+</div></nav>
+
+<div class="wrap">
+  <div class="cover">
+    <div class="badge">magicJar SLM Lab · 학습 보고서</div>
+    <h1>작은 모델, 큰 야망</h1>
+    <p class="sub">로컬 SLM(Gemma3:4b)이 큰 LLM 없이도 magicJar 도메인 질문에 답하게 만드는 여정.
+    우리가 실제로 만들고 측정한 것을, 초보도 따라올 수 있게 챕터로 쌓아 한 권으로 묶는다.</p>
+  </div>
+
+  <div class="box concept">
+    <span class="tag">이 책은 이렇게 쌓인다</span>
+    <p>이 폴더(<code class="inline">docs/학습/</code>)는 한 번에 완성하는 문서가 아니라 <strong>마일스톤마다 챕터가 더해지는 책</strong>이다.
+    Phase 1(RAG 도메인 Q&A)을 끝낸 지금 1~4장이 놓였고, Phase 2·3이 진행되면 챕터가 이어진다.
+    나중에 이 목차만 펼쳐도 "아, 이렇게 SLM을 학습시키는구나"가 한눈에 보이는 것이 목표다.</p>
+  </div>
+
+  <h2>목차</h2>
+  <div class="toc">
+    <a href="ch01-큰그림.html">
+      <span class="num">01</span>
+      <span>
+        <div class="t">큰 그림: SLM·RAG·증류, 그리고 이 랩의 목표</div>
+        <div class="d">왜 만드는가 · 프롬프팅/RAG/증류의 차이 · 4b로 가능한 것과 아닌 것 · Phase 로드맵 · 안전 경계</div>
+      </span>
+    </a>
+    <a href="ch02-파이프라인.html">
+      <span class="num">02</span>
+      <span>
+        <div class="t">RAG 파이프라인 해부 (입력·출력·파라미터 + 실측 데이터)</div>
+        <div class="d">인덱싱→BGE-M3→Qdrant→검색→프롬프트→Gemma 생성. 실제로 돌린 진짜 검색 청크·점수·프롬프트·답변·지연으로 따라간다.</div>
+      </span>
+    </a>
+    <a href="ch03-직접보기.html">
+      <span class="num">03</span>
+      <span>
+        <div class="t">직접 보기: Phoenix · Streamlit · Qdrant 관측 가이드</div>
+        <div class="d">어디서 무엇을 보나 — 캡쳐형 목업과 클릭 단위 가이드로 RAG 내부를 눈으로 확인한다.</div>
+      </span>
+    </a>
+    <a href="ch04-측정과가설.html">
+      <span class="num">04</span>
+      <span>
+        <div class="t">측정: Opus만큼인가 + 왜 이렇게 됐나(가설)</div>
+        <div class="d">30문항 고정 평가 · LLM-as-judge · Ragas · 실제 스모크 결과 · 정직한 한계 · 결과를 설명하는 가설.</div>
+      </span>
+    </a>
+    <a class="soon" href="#">
+      <span class="num">05</span>
+      <span>
+        <div class="t">코드 분석 질문으로 확장 <span class="soon-tag">· Phase 2 예정</span></div>
+        <div class="d">"이 저장 로직 왜 문제일까?" — 비에이전틱 RAG로 코드를 던져주고 분석시키기. 프롬프트 인젝션 하드닝.</div>
+      </span>
+    </a>
+    <a class="soon" href="#">
+      <span class="num">06</span>
+      <span>
+        <div class="t">증류: Opus 없이도 잘하게 <span class="soon-tag">· Phase 3 예정</span></div>
+        <div class="d">RAG로 모은 (질문→Opus답) 쌍으로 Gemma 가중치를 조정해 RAG 의존을 줄이면서 품질 유지.</div>
+      </span>
+    </a>
+  </div>
+
+  <div class="box measured">
+    <span class="tag">지금까지의 실측 요약 (Phase 1)</span>
+    <p>코퍼스 <strong>71개 파일 → 1,095개 청크</strong>를 BGE-M3(1024차원)로 임베딩해 Qdrant에 적재(status green).
+    실제 질의에서 의미적으로 맞는 코드를 검색(예: "전략리서치 후보 발굴" → <code class="inline">StrategyResearchController.kt</code>, 코사인 0.63).
+    스모크 평가에서 Opus 정답지 대비 Gemma 평균 점수 <strong>3.0/5</strong>, 승률 0(아직 Opus 우세) — 개선의 출발선을 숫자로 확보했다.</p>
+  </div>
+
+  <p class="meta-foot">magicJar SLM Lab · RAG Phase 1 · 모든 런타임 로컬/MOCK · AI는 설명·초안만, 매매 권한 없음</p>
+</div>
+</body>
+</html>

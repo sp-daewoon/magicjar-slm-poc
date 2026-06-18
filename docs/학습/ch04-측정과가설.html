@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4장 · 측정과 가설 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+</div></nav>
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Chapter 4</div>
+  <h1>측정: Opus만큼인가 + 왜 이렇게 됐나(가설)</h1>
+  <p class="lead">"좋아진 것 같다"는 측정이 아니다 — 같은 자로 재고, 결과를 가설로 설명하고, 한계를 정직하게 적는다.</p>
+</header>
+
+<!-- ===== 1. 왜 측정이 핵심인가 ===== -->
+<h2>1. 왜 측정이 핵심인가</h2>
+
+<p>
+  로컬 4B 모델(Gemma)이 클라우드 최고급 모델(Claude Opus)만큼 magicJar 도메인 질문에 답할 수 있을까?
+  직감으로는 절대 알 수 없다. 필요한 것은 <strong>공정하고 반복 가능한 자(尺)</strong>다.
+</p>
+
+<div class="box concept">
+  <span class="tag">핵심 원칙</span>
+  <p>
+    같은 30개 질문 세트를 매번 고정해서 쓴다. 질문이 바뀌면 점수가 바뀐 게 모델 때문인지 질문 때문인지 알 수 없다.
+    <strong>30 고정 질문 = 불변의 자.</strong>
+    이 자로 Phase 1 → Phase 2 → Phase 3을 일관되게 비교한다.
+  </p>
+</div>
+
+<p>
+  숫자가 있어야 비로소 방향이 생긴다. "Gemma에 RAG를 붙였더니 답이 좋아진 것 같다"는 인상이 아니라,
+  "Opus-judge 기준 평균 점수가 3.0 → 3.8로 올랐고, 승률이 0% → 30%로 개선됐다"는 문장을 써야
+  Phase 2 실험의 성공 기준을 정할 수 있고, Phase 3 증류의 학습 데이터 품질도 점검할 수 있다.
+</p>
+
+<div class="box analogy">
+  <span class="tag">비유</span>
+  <p>
+    마라톤 훈련을 할 때 "오늘 더 빨리 달린 것 같다"고 기억에만 의존하지 않는다.
+    스톱워치로 매번 같은 코스를 재야 훈련이 효과가 있는지 확인할 수 있다.
+    30 고정 질문 평가 세트가 바로 그 <strong>스톱워치</strong>다.
+  </p>
+</div>
+
+<!-- ===== 2. 측정 설계 ===== -->
+<h2>2. 측정 설계 — 4단계 파이프라인</h2>
+
+<p>우리의 평가 파이프라인은 네 단계로 이루어진다.</p>
+
+<div class="flow">
+  <div class="node io">
+    <b>30개 고정 질문 (DSL + 시스템)</b>
+    <div class="sub">매 평가 회차 동일하게 사용. 변경 시 버전 태그 필수.</div>
+  </div>
+  <div class="arrow">↓ Step 1</div>
+  <div class="node">
+    <b>Gemma + RAG 답변 생성</b>
+    <div class="sub">로컬 Gemma 4B 모델이 RAG 파이프라인을 통해 각 질문에 답변. 응답시간(latency_ms)도 기록.</div>
+  </div>
+  <div class="arrow">↓ Step 2</div>
+  <div class="node">
+    <b>Opus 정답지 생성</b>
+    <div class="sub">로컬 <code class="inline">claude</code> CLI로 같은 질문 + 같은 컨텍스트를 Opus에게 전달. 이게 "기준 답안"이 된다.</div>
+  </div>
+  <div class="arrow">↓ Step 3</div>
+  <div class="node">
+    <b>Ragas 지표 측정</b>
+    <div class="sub">Faithfulness / Answer Relevancy / Context Precision — 각각 검색된 근거, 질문 관련성, 청크 정밀도를 수치화. (현재 Phase 1은 의존성 버그로 NaN — 아래 한계 섹션 참조)</div>
+  </div>
+  <div class="arrow">↓ Step 4</div>
+  <div class="node">
+    <b>Opus-as-judge 심판</b>
+    <div class="sub">Opus에게 Gemma 답과 Opus 정답지를 동시에 보여주고 우열을 가리게 함. <code class="inline">winner</code> (gemma / opus / tie) + <code class="inline">gemma_score</code> (1~5점) 반환.</div>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="node io">
+    <b>results.csv / results.md 저장</b>
+    <div class="sub">회차별로 보관. 점수 추이를 시계열로 비교 가능.</div>
+  </div>
+</div>
+
+<h3>왜 정답지를 Opus로 만드나?</h3>
+
+<p>이유는 두 가지다.</p>
+<ol>
+  <li>
+    <strong>지금 당장:</strong> 평가의 기준이 필요하다. 사람이 30개 질문을 매번 직접 채점하면 시간이 너무 많이 든다.
+    Opus는 magicJar 코드를 코드 청크 기반으로 정확히 읽고, 충분히 신뢰할 수 있는 기술 답변을 생성한다.
+  </li>
+  <li>
+    <strong>Phase 3을 위해:</strong> Opus 정답지는 나중에 Gemma를 파인튜닝할 때 학습 데이터(teacher signal)로 재활용된다.
+    지금 품질 좋은 정답지를 쌓아두는 것이 Phase 3 증류의 기반이 된다.
+  </li>
+</ol>
+
+<div class="box concept">
+  <span class="tag">설계 패턴</span>
+  <p>
+    평가 데이터와 훈련 데이터를 <strong>동시에</strong> 만든다. 같은 (질문, Opus답) 쌍이 평가 기준도 되고 나중에 학습 샘플도 된다.
+    두 번 일하지 않는다는 점에서 매우 경제적인 설계다.
+  </p>
+</div>
+
+<!-- ===== 3. LLM-as-judge ===== -->
+<h2>3. LLM-as-judge 란</h2>
+
+<p>
+  사람 대신 LLM이 두 답변을 비교해서 채점하는 방식이다.
+  평가자(judge)에게 질문, Gemma 답, Opus 답, 평가 기준을 프롬프트로 전달하면
+  judge가 어느 쪽이 더 낫고 Gemma 답의 점수가 얼마인지 돌려준다.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>장점</th>
+      <th>단점 / 주의사항</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>빠르다 — 사람 채점 없이 수십~수백 개 질문을 자동화할 수 있음</td>
+      <td>judge 자신의 스타일·어투를 선호하는 <strong>자기편향(self-bias)</strong>이 있을 수 있음</td>
+    </tr>
+    <tr>
+      <td>확장 가능 — 질문 수를 늘려도 비용/시간이 선형적으로만 증가</td>
+      <td>judge가 약하면 판정 자체가 신뢰할 수 없음 (이 프로젝트에서 judge = Opus이므로 상대적으로 안전)</td>
+    </tr>
+    <tr>
+      <td>일관성 — 같은 프롬프트 템플릿이면 매번 비슷한 기준으로 채점</td>
+      <td>judge가 긴 답변을 무조건 선호하거나, 형식(마크다운 등)에 과하게 반응할 수 있음</td>
+    </tr>
+    <tr>
+      <td>정성 피드백 추출 가능 — 왜 Opus가 나은지 이유를 텍스트로 받을 수도 있음</td>
+      <td>정답이 불분명한 질문에서는 judge도 틀릴 수 있음</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>우리 구현의 출력</h3>
+
+<div class="grid2">
+  <div class="box concept">
+    <span class="tag">winner 필드</span>
+    <p>
+      <code class="inline">gemma</code> / <code class="inline">opus</code> / <code class="inline">tie</code> 중 하나.
+      Gemma가 더 낫거나 동등하면 <code class="inline">gemma</code> 또는 <code class="inline">tie</code>를 목표로 한다.
+      Phase 1 smoke 결과: 2문항 모두 <code class="inline">opus</code>.
+    </p>
+  </div>
+  <div class="box concept">
+    <span class="tag">gemma_score 필드</span>
+    <p>
+      1~5 정수. Opus 정답 대비 Gemma 답의 절대 품질.
+      5 = Opus와 동급, 1 = 거의 도움 안 됨.
+      Phase 1 smoke 결과: 2문항 모두 <strong>3점</strong>.
+    </p>
+  </div>
+</div>
+
+<!-- ===== 4. Ragas란 ===== -->
+<h2>4. Ragas란</h2>
+
+<p>
+  Ragas는 RAG 파이프라인을 평가하기 위한 오픈소스 프레임워크다.
+  단순히 "답이 맞나"를 보는 게 아니라, RAG의 각 부품이 제대로 일하는지를 분해해서 측정한다.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>지표</th>
+      <th>무엇을 재나</th>
+      <th>간단한 설명</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Faithfulness</strong></td>
+      <td>답변이 검색된 청크에 <em>근거하는가</em></td>
+      <td>모델이 제공받은 컨텍스트 밖의 내용을 지어내지 않는지 측정. 높을수록 "할루시네이션이 없음".</td>
+    </tr>
+    <tr>
+      <td><strong>Answer Relevancy</strong></td>
+      <td>답변이 <em>질문에 관련이 있는가</em></td>
+      <td>질문을 역생성해서 원래 질문과 얼마나 비슷한지 코사인 유사도로 측정. 엉뚱한 답변을 잡아낸다.</td>
+    </tr>
+    <tr>
+      <td><strong>Context Precision</strong></td>
+      <td>검색된 청크가 <em>정말 필요한 청크인가</em></td>
+      <td>상위 k개 청크 중 실제로 답변에 기여한 청크의 비율. 노이즈가 많은 청크를 줄이면 올라간다.</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="box concept">
+  <span class="tag">왜 세 지표가 모두 필요한가</span>
+  <p>
+    세 지표는 서로 다른 실패 모드를 잡는다. Faithfulness가 낮으면 "모델이 마음대로 지어냈다",
+    Answer Relevancy가 낮으면 "엉뚱한 답을 했다",
+    Context Precision이 낮으면 "검색이 불필요한 청크를 너무 많이 가져왔다".
+    하나만 봐서는 어디가 문제인지 알 수 없다.
+  </p>
+</div>
+
+<div class="box warn">
+  <span class="tag">Phase 1 현황 — Ragas 지표는 현재 NaN</span>
+  <p>
+    <code class="inline">ragas==0.4.3</code>가 현재 의존성 환경에서
+    <code class="inline">langchain_community</code> 내부의 <code class="inline">VertexAI</code> 임포트를 시도하다 실패한다.
+    이 버그로 인해 <code class="inline">run_eval</code>이 <code class="inline">try/except</code>로 강등되어
+    Ragas 블록 자체를 건너뛴다. 러너는 완주했지만 세 지표 모두 NaN.
+    <strong>Phase 1에서 실측 신호는 Opus-as-judge 점수뿐이다.</strong>
+    Ragas 수치 복구는 Phase 2 의존성 업그레이드 작업으로 예정되어 있다.
+  </p>
+</div>
+
+<!-- ===== 5. 실제 결과 ===== -->
+<h2>5. 실제 결과 — 스모크 이밸</h2>
+
+<p>
+  스모크 이밸(smoke eval)은 전체 30문항 중 <strong>2문항(limit=2)</strong>만 빠르게 돌려보는 제한 실행이다.
+  파이프라인이 end-to-end로 돌아가는지 확인하는 것이 목적이다.
+</p>
+
+<div class="box measured">
+  <span class="tag">실측 결과 요약</span>
+  <p>
+    q01 · q02 모두 <strong>winner = opus</strong>, <strong>gemma_score = 3</strong> (5점 만점).
+    Ragas 3지표(faithfulness, answer_relevancy, context_precision)는 모두 <strong>NaN</strong>.
+    평균 응답 지연: <strong>43,505ms</strong> (약 43초). 로컬 CPU 추론임을 감안해야 한다.
+  </p>
+</div>
+
+<p>아래는 실제로 생성된 <code class="inline">results.md</code> 원문이다.</p>
+
+<pre class="code">
+# RAG Phase 1 Eval
+
+## Summary
+
+- gemma_win_rate: 0.000
+- tie_rate: 0.000
+- avg_gemma_score: 3.000
+- avg_faithfulness: NaN
+- avg_answer_relevancy: NaN
+- avg_context_precision: NaN
+- avg_latency_ms: 43505.500
+</pre>
+
+<p>그리고 각 문항별 세부 결과(results.csv에서 추출):</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>질문 요약</th>
+      <th>winner</th>
+      <th>gemma_score</th>
+      <th>latency_ms</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code class="inline">q01</code></td>
+      <td>StrategyResearchAiDiscovery 전체 흐름</td>
+      <td>opus</td>
+      <td>3</td>
+      <td>65,178</td>
+    </tr>
+    <tr>
+      <td><code class="inline">q02</code></td>
+      <td>StrategyResearchAiTextClient 역할·반환값</td>
+      <td>opus</td>
+      <td>3</td>
+      <td>21,833</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>점수 3이 의미하는 것</h3>
+
+<p>
+  5점 만점에서 3점은 "중간"이다. 완전히 틀리지는 않았지만 Opus만큼 완성도 있지도 않다는 뜻이다.
+  Gemma는 RAG가 제공한 코드 청크를 읽고 기본적인 흐름을 설명했지만,
+  Opus처럼 내부 의존성 연결, 예외 처리 경로, 비즈니스 의도까지 종합하는 깊이는 부족했다.
+</p>
+
+<details>
+  <summary>q01 Gemma 답변 발췌 (클릭해서 펼치기)</summary>
+  <div class="body">
+    <pre class="code scroll">전략리서치 AI 후보 발굴 서비스는 다음과 같은 단계로 진행됩니다:
+
+1. 사용자 요청 수신: 사용자가 자연어를 통해 원하는 종목/테마를 입력하면
+   해당 정보가 전략리서치 서비스에 전달됩니다.
+2. AI 프롬프트 생성 (core prompt): 전략리서치 AI 서비스는 core prompt를
+   사용하여 Claude CLI에 요청을 전달합니다.
+3. Claude API 호출: 생성된 프롬프트를 기반으로 Claude에서 후보 종목 목록을
+   생성합니다.
+4. 후보 검증 및 정제: Claude의 답변(JSON 형식)을 파싱하여, 전략리서치
+   서비스는 캔들 가용성 확보 → 후보 기준 충족 여부 검증 → 필터링 순으로 처리.
+5. 결과 저장 및 반환: 최종적으로 검증된 후보 종목 목록을 저장하고
+   StrategyResearchAiDiscoveryResponseDto 형태로 반환합니다.</pre>
+  </div>
+</details>
+
+<details>
+  <summary>q01 Opus 답변 발췌 (클릭해서 펼치기)</summary>
+  <div class="body">
+    <pre class="code scroll">StrategyResearchAiDiscovery(AI 종목 후보 발굴) 흐름을 코드 기준으로 정리했습니다.
+전체 로직은 StrategyResearchAiDiscoveryService 한 곳에 강하게 응집돼 있고,
+AI 호출만 StrategyResearchAiTextClient 인터페이스 뒤로 분리돼 있습니다.
+
+## 한눈에 보는 흐름
+HTTP 요청 → 컨트롤러 → 서비스(discover)
+   → 이전 상태 조회(KEPT/DISMISSED)
+   → [캐시 충분하면 AI 건너뜀]
+   → 프롬프트 빌드 → AI 텍스트 클라이언트 호출
+   → JSON 파싱 → 종목(instrument) 매칭 → 검증
+   → 캔들 가용성 보강 → 경고 생성 → 상태 저장 → 응답</pre>
+  </div>
+</details>
+
+<p>
+  두 답변을 비교해 보면, Gemma는 순서 목록으로 전체 흐름을 설명했지만
+  Opus는 <strong>캐시 분기</strong>(캐시 충분하면 AI 건너뜀)나 <strong>상태 조회 선행</strong>(KEPT/DISMISSED)
+  같은 세부 흐름까지 코드 구조를 그대로 반영했다. 점수 3과 opus 승의 차이가 여기서 온다.
+</p>
+
+<!-- ===== 6. 정직한 한계 ===== -->
+<h2>6. 정직한 한계</h2>
+
+<div class="box warn">
+  <span class="tag">한계 1 — Ragas 3지표가 현재 NaN</span>
+  <p>
+    <strong>원인:</strong> <code class="inline">ragas==0.4.3</code>가 <code class="inline">langchain_community</code>
+    내부에서 Google <code class="inline">VertexAI</code> 임포트를 시도하다 실패한다.
+    eval 러너는 <code class="inline">try/except</code>로 이 블록을 우아하게 건너뛰어 완주하지만,
+    faithfulness / answer_relevancy / context_precision 세 지표는 모두 NaN으로 남는다.
+  </p>
+  <p>
+    <strong>결과:</strong> Phase 1에서 "검색 품질"을 수치로 직접 볼 수 없다.
+    Opus-as-judge 점수만이 유일한 실측 신호다.
+    Ragas 지표를 살리려면 <code class="inline">ragas</code> 버전 업그레이드 또는
+    langchain 의존성 정리가 필요하다 — Phase 2 작업 목록에 올라가 있다.
+  </p>
+</div>
+
+<div class="box warn">
+  <span class="tag">한계 2 — 임베딩 max_length=512 절단</span>
+  <p>
+    현재 임베딩 모델이 512 토큰 이상의 청크를 조용히 잘라낸다.
+    magicJar 코드베이스에는 500줄이 넘는 Service/Controller 파일이 여럿 있다.
+    청크가 512 토큰 경계에서 잘리면 함수의 후반부나 중요한 리턴값 정의가 임베딩에 포함되지 않는다.
+    결과적으로 검색된 청크가 불완전하고, RAG 답변의 completeness가 떨어진다.
+  </p>
+</div>
+
+<div class="box warn">
+  <span class="tag">한계 3 — 프롬프트 인젝션 미하드닝</span>
+  <p>
+    현재 평가 코퍼스는 magicJar 자체 코드와 문서로만 구성된 신뢰 코퍼스다.
+    외부 사용자 입력이 코퍼스에 섞이지 않기 때문에 Phase 1에서는 이 위험을 허용했다.
+    하지만 나중에 사용자 자유 텍스트(전략 이름, 메모 등)가 인덱싱 대상에 포함된다면
+    인젝션 방어 로직이 반드시 필요하다.
+  </p>
+</div>
+
+<div class="box warn">
+  <span class="tag">한계 4 — Ragas judge 모델이 Gemma 4B</span>
+  <p>
+    이상적으로는 Ragas 지표 계산에도 능력 있는 모델이 judge로 참여해야 한다.
+    로컬 환경에서 Ragas가 Gemma 4B를 judge로 쓰게 설정되어 있다면,
+    Ragas 점수 자체가 약한 모델의 판정이 되어 신뢰도가 낮아진다.
+    Phase 2에서 Ragas를 부활시킬 때 judge 모델 설정도 함께 점검해야 한다.
+  </p>
+</div>
+
+<!-- ===== 7. 가설 ===== -->
+<h2>7. 가설 — 왜 이런 결과가 나왔나</h2>
+
+<p>숫자를 얻었으면 그 다음은 설명이다. 가설이란 "이렇게 됐을 것이다"는 추론이며, 다음 실험으로 검증한다.</p>
+
+<div class="box hypo">
+  <span class="tag">가설 A — 왜 Opus가 이겼나</span>
+  <p>
+    Gemma 4B는 파라미터 수와 사전학습 데이터 범위에서 Opus와 비교할 수 없다.
+    특히 magicJar 도메인처럼 한국어 + 금융 + Kotlin 코드 + 커스텀 DSL이 복합된 전문 영역에서는,
+    일반적인 코드 이해 능력 외에 <strong>도메인 어휘와 시스템 구조를 동시에 종합하는 추론</strong>이 필요하다.
+    Gemma는 RAG가 제공한 코드 청크는 읽었지만, 청크 간 연결 고리(예: KEPT/DISMISSED 상태가 캐시 분기에 미치는 영향)를
+    스스로 이어 붙이지 못했을 가능성이 높다.
+  </p>
+  <p><strong>다음 실험:</strong> RAG 청크 수(top-k)를 늘렸을 때 Gemma 점수가 오르는지 확인.</p>
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설 B — 왜 gemma_score가 3(중간)인가</span>
+  <p>
+    완전히 틀리지 않은 이유는 RAG 덕분이다.
+    Gemma가 스스로 magicJar 아키텍처를 알 리 없지만, RAG가 관련 코드 청크를 제공했기 때문에
+    최소한 "어떤 서비스가 있고 어떤 단계를 거친다"는 구조는 파악할 수 있었다.
+    그러나 3점에서 멈춘 이유는 <strong>청크 제공 = 완전한 이해가 아니기 때문</strong>이다.
+    Opus는 같은 청크를 받고도 메서드 의존성, 예외 경로, 설계 의도까지 종합했다.
+  </p>
+  <p><strong>다음 실험:</strong> RAG 없이 같은 질문을 Gemma에게 던졌을 때 점수가 몇 점인지 비교.</p>
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설 C — RAG가 없었다면 점수가 더 낮았을 것이다</span>
+  <p>
+    magicJar는 공개 데이터셋에 없는 커스텀 코드베이스다.
+    RAG 없이는 Gemma가 <code class="inline">StrategyResearchAiDiscoveryService</code>나
+    <code class="inline">StrategyResearchAiTextClient</code>의 존재조차 알지 못한다.
+    RAG가 관련 청크를 제공하지 않았다면 답변은 "그런 정보를 모릅니다" 또는
+    다른 프레임워크의 패턴을 억측하는 수준이었을 것이다. 점수 1~2 예상.
+  </p>
+  <p><strong>실험 제안:</strong> RAG on/off A/B 테스트. 같은 30문항을 RAG 없이 Gemma에게 돌려서 점수 차이를 직접 측정.</p>
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설 D — 512 절단이 점수를 낮추고 있다</span>
+  <p>
+    q01의 컨텍스트에는 <code class="inline">StrategyResearchController.kt</code>(270줄)가 포함되었는데,
+    이 파일은 임베딩 단계에서 512 토큰 경계에서 잘렸을 가능성이 높다.
+    잘린 청크에서는 컨트롤러 후반부 엔드포인트(<code class="inline">core-prompt</code> 수정, 프리셋 추천 등)가
+    Gemma에게 전달되지 않았을 수 있다.
+    결과적으로 Gemma의 답변에서 전체 흐름 중 일부가 누락된 이유가 여기에 있을 수 있다.
+  </p>
+  <p><strong>실험 제안:</strong> max_length=1024로 늘리거나 청킹 전략을 함수 경계 기반으로 변경 후 점수 재측정.</p>
+</div>
+
+<!-- ===== 8. 다음 단계 ===== -->
+<h2>8. 다음 단계 — 무엇을 측정하면 좋은가</h2>
+
+<p>Phase 1에서 얻은 숫자를 바탕으로 Phase 2에서 시도할 실험들이 자연스럽게 도출된다.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>실험</th>
+      <th>목적</th>
+      <th>기대 신호</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>RAG on vs off A/B</td>
+      <td>RAG의 기여도 직접 측정</td>
+      <td>RAG off → 점수 1~2, on → 점수 3 확인 시 가설 C 검증</td>
+    </tr>
+    <tr>
+      <td>top-k 변화 (3 → 5 → 10)</td>
+      <td>더 많은 청크가 답변 품질을 올리는지 확인</td>
+      <td>3 → 5일 때 gemma_score 개선 여부</td>
+    </tr>
+    <tr>
+      <td>청킹 전략 변경 (고정 크기 → 함수 경계)</td>
+      <td>512 절단 문제 해소</td>
+      <td>context_precision 상승, score 3→4 가능성</td>
+    </tr>
+    <tr>
+      <td>Ragas 의존성 수정 후 재실행</td>
+      <td>faithfulness / answer_relevancy / context_precision 실측</td>
+      <td>NaN → 실수 지표, 검색 품질 진단 가능</td>
+    </tr>
+    <tr>
+      <td>Gemma 7B 또는 파인튜닝 모델 교체</td>
+      <td>Phase 3 증류 효과 검증</td>
+      <td>score 3 → 4~5 목표</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Phase 3 증류로 가는 길</h3>
+
+<p>
+  지금 쌓이는 <strong>(질문, Opus 정답지, Gemma 오답)</strong> 세 쌍이 Phase 3의 원료다.
+  Opus 정답지로 Gemma를 파인튜닝하면, 처음부터 도메인 지식 없이 시작했던 Gemma가
+  magicJar 코드베이스에 특화된 응답 패턴을 익히게 된다.
+  이 과정을 <strong>지식 증류(knowledge distillation)</strong>라 부른다.
+  큰 선생(Opus)의 답변 스타일을 작은 학생(Gemma)에게 전이하는 것이다.
+</p>
+
+<div class="box concept">
+  <span class="tag">Phase 3 목표</span>
+  <p>
+    파인튜닝된 Gemma의 평균 gemma_score가 <strong>4.0 이상</strong>이 되는 것.
+    그리고 winner=gemma 또는 tie 비율이 50% 이상이 되는 것.
+    그 시점에서 로컬 SLM이 Opus 수준의 <em>magicJar 도메인 전문성</em>을 갖췄다고 말할 수 있다.
+  </p>
+</div>
+
+<hr>
+
+<div class="box analogy">
+  <span class="tag">이 책에 쌓일 다음 챕터 예고</span>
+  <p>
+    <strong>5장 (Phase 2 예정):</strong> Ragas 의존성 복구 + 청킹 전략 개선 + RAG on/off 비교 실험.
+    숫자가 달라지면 가설 중 무엇이 틀렸는지도 솔직하게 기록한다.
+  </p>
+  <p>
+    <strong>6장 (Phase 3 예정):</strong> Opus 정답지를 이용한 Gemma 파인튜닝(LoRA/QLoRA).
+    "작은 모델이 큰 선생을 따라잡는다"는 실험의 전 과정을 담는다.
+  </p>
+  <p>
+    이 챕터가 가르쳐준 것: 측정 없이는 발전도 없다. 지금의 NaN과 3점은 부끄러운 결과가 아니라
+    <strong>출발선이 어딘지를 정확하게 아는 것</strong>이다.
+  </p>
+</div>
+
+<nav class="chapter-nav">
+  <a href="ch03-직접보기.html"><span class="dir">← 이전</span>3장 · 직접 보기</a>
+  <a href="index.html"><span class="dir">목차 →</span>책 표지로</a>
+</nav>
+</div>
+</body>
+</html>

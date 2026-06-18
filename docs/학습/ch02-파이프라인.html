@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2장 · RAG 파이프라인 해부 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+</div></nav>
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Chapter 2</div>
+  <h1>RAG 파이프라인 해부: 입력·출력·파라미터 + 실측 데이터</h1>
+  <p class="lead">질문 한 개가 답이 되기까지 — 6단계 각각의 입력/출력/파라미터를, 우리가 실제로 돌린 진짜 데이터로 따라간다.</p>
+</header>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 섹션 1: 두 시점 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>1. 두 시점: 인덱싱(미리) vs 질의(매번)</h2>
+
+<p>RAG에는 시간적으로 완전히 다른 두 단계가 있다. <strong>인덱싱(Indexing)</strong>은 미리 한 번 실행되고, <strong>질의(Query)</strong>는 사용자가 질문할 때마다 실행된다. 이 둘을 구분하지 않으면 "왜 빠르지?" vs "왜 느리지?"를 잘못 이해하게 된다.</p>
+
+<div class="grid2">
+  <div>
+    <h3 style="margin-top:0">🗂 인덱싱 (미리, 1회)</h3>
+    <div class="flow">
+      <div class="node"><b>레포 파일</b><div class="sub">코드·문서 71개</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>청크 분할</b><div class="sub">최상위 선언 경계</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>BGE-M3 임베딩</b><div class="sub">1024차원 벡터</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>Qdrant 적재</b><div class="sub">1,095 포인트 저장</div></div>
+    </div>
+  </div>
+  <div>
+    <h3 style="margin-top:0">💬 질의 (매번, ~41초)</h3>
+    <div class="flow">
+      <div class="node"><b>사용자 질문</b><div class="sub">"전략리서치 후보 발굴은?"</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>질문 임베딩</b><div class="sub">1024차원</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>Qdrant top-k 검색</b><div class="sub">코사인 유사도 top-5</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>프롬프트 조립</b><div class="sub">시스템 + 컨텍스트 + 질문</div></div>
+      <div class="arrow">↓</div>
+      <div class="node"><b>Gemma3:4b 생성</b><div class="sub">한국어 답변 출력</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="box concept">
+  <span class="tag">핵심 개념</span>
+  인덱싱은 "도서관 색인 카드 만들기"다. 책이 바뀌지 않는 한 매번 만들 필요가 없다. 질의는 "색인 카드를 뒤져 책 내용을 찾아 요약"하는 것으로, 매번 실행된다. 이 설계 덕분에 수천 개 파일을 가진 레포에서도 질의 속도를 일정하게 유지할 수 있다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 0: 코퍼스 큐레이션 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 0 · 코퍼스 큐레이션: 무엇을 인덱싱 대상으로 고를까?</h2>
+
+<p>RAG의 품질은 "무엇을 집어넣느냐"에서 절반이 결정된다. 쓸모없는 파일을 많이 넣으면 잡음이 늘어나고, 중요한 파일을 빠뜨리면 답을 못 찾는다. 그리고 <strong>비밀 파일을 잘못 넣으면 보안 사고</strong>가 된다.</p>
+
+<div class="box warn">
+  <span class="tag">안전 주의</span>
+  <code class="inline">.env</code>, <code class="inline">application-prod.yml</code>, KIS API 키, JWT 시크릿이 포함된 파일은 절대 인덱싱하면 안 된다. 벡터DB에 저장된 텍스트는 LLM이 답변 속에 그대로 노출할 수 있다. 우리 랩은 <code class="inline">MAGICJAR_MODE=MOCK</code> 환경이므로 실 시크릿이 없지만, 인덱서가 <code class="inline">.env*</code>, <code class="inline">*.secret</code>, <code class="inline">build/</code>, <code class="inline">node_modules/</code>를 제외 목록에 넣는 것이 기본 원칙이다.
+</div>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력</strong></td><td>레포 루트 디렉터리 전체 (magicjar-slm-poc/)</td></tr>
+    <tr><td><strong>출력</strong></td><td>인덱싱 대상 파일 목록 — <strong>71개 파일</strong> 선정</td></tr>
+    <tr><td><strong>파라미터: include</strong></td><td><code class="inline">**/*.kt</code>, <code class="inline">**/*.java</code>, <code class="inline">**/*.md</code>, <code class="inline">**/*.yaml</code>, <code class="inline">**/*.yml</code>, <code class="inline">**/*.ts</code>, <code class="inline">**/*.tsx</code></td></tr>
+    <tr><td><strong>파라미터: exclude</strong></td><td><code class="inline">.env*</code>, <code class="inline">build/</code>, <code class="inline">node_modules/</code>, <code class="inline">*.secret</code>, <code class="inline">dist/</code>, <code class="inline">*.class</code>, <code class="inline">*.jar</code></td></tr>
+  </tbody>
+</table>
+
+<div class="box measured">
+  <span class="tag">실측값</span>
+  71개 파일 → 1,095 청크. 이 중 Kotlin 소스(.kt)가 대다수를 차지하며, architecture 폴더의 Markdown 문서들도 포함되어 있다. 선정된 71개 파일이 곧 우리 RAG 시스템이 "아는 세계"의 전부다.
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설</span>
+  71개 파일은 전체 레포에서 코드·문서에 해당하는 핵심 파일만 고른 결과다. 빌드 산출물이나 테스트 픽스처를 포함했다면 청크 수가 수천 개로 늘어나고, 검색 잡음이 증가했을 것이다. 품질과 양의 트레이드오프가 단계 0에서 이미 결정된다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 1: 청킹 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 1 · 청킹: 왜 파일을 조각내는가?</h2>
+
+<p>임베딩 모델에는 입력 길이 한계(BGE-M3는 512 토큰)가 있다. 또 검색할 때 "파일 전체"보다 "관련 함수 하나"가 훨씬 정밀하게 매칭된다. 그래서 파일을 <strong>의미 단위로 잘라</strong> 각 조각을 독립적으로 임베딩한다.</p>
+
+<p>코드와 문서는 쪼개는 기준이 다르다:</p>
+<ul>
+  <li><strong>코드(.kt, .ts 등)</strong>: 최상위 선언 경계(class, object, fun, data class)를 기준으로 분할. 한 클래스 안의 메서드가 하나의 청크 단위가 된다.</li>
+  <li><strong>문서(.md)</strong>: 헤딩(#, ##, ###)을 기준으로 섹션 단위로 분할.</li>
+</ul>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력</strong></td><td>큐레이션된 파일 71개 (텍스트 내용 전체)</td></tr>
+    <tr><td><strong>출력</strong></td><td>청크 1,095개. 각 청크: <code class="inline">{file_path, start_line, end_line, kind, text}</code></td></tr>
+    <tr><td><strong>파라미터: 코드 분할 전략</strong></td><td>최상위 선언 경계(top-level declaration boundary)</td></tr>
+    <tr><td><strong>파라미터: 문서 분할 전략</strong></td><td>Markdown 헤딩(h1~h3)</td></tr>
+    <tr><td><strong>파라미터: kind</strong></td><td><code class="inline">code</code> 또는 <code class="inline">markdown</code> (검색 결과에 표시)</td></tr>
+  </tbody>
+</table>
+
+<div class="box analogy">
+  <span class="tag">비유</span>
+  책을 통째로 스캔하면 "어느 페이지에 뭐가 있는지" 찾기 어렵다. 챕터별로 인덱스 카드를 만들어야 "2장 3절"을 빠르게 찾을 수 있다. 청킹은 그 인덱스 카드 단위를 결정하는 과정이다. 너무 잘게 쪼개면(한 줄씩) 맥락이 사라지고, 너무 크게 묶으면(파일 전체) 임베딩이 뭉개진다.
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설</span>
+  1번 검색 결과인 <code class="inline">StrategyResearchController.kt:26-296</code>는 한 청크가 270줄이다. 이 크기면 512 토큰 임베딩 한계에 근접하거나 초과할 수 있다. 실제로 임베딩 단계에서 잘릴 가능성이 있으며, 이것이 점수가 0.63으로 중간 수준에 머무는 원인 중 하나일 수 있다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 2: 임베딩 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 2 · 임베딩(BGE-M3): 글을 1024차원 의미 좌표로</h2>
+
+<p>임베딩은 텍스트를 숫자 벡터로 바꾸는 과정이다. 비슷한 의미의 텍스트는 이 공간에서 가까이 놓이고, 무관한 텍스트는 멀리 놓인다. 우리는 <strong>BAAI/bge-m3</strong> 모델을 사용하는데, 이 모델은 한국어·영어·코드를 모두 이해하는 다국어 모델이다.</p>
+
+<div class="box analogy">
+  <span class="tag">비유</span>
+  도시들을 지도 위에 점으로 찍으면 서울과 인천은 가깝고, 서울과 부산은 멀다. 임베딩은 텍스트 조각들을 1024차원 "의미 지도" 위에 찍는 과정이다. "RSI 과매도 매수"라는 질문과 "rsi &lt; 30일 때 진입" 코드 청크는 이 지도에서 가까운 위치에 놓인다.
+</div>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력</strong></td><td>청크 텍스트 1개 (문자열)</td></tr>
+    <tr><td><strong>출력</strong></td><td>1024차원 부동소수점 벡터 (float32 × 1024)</td></tr>
+    <tr><td><strong>파라미터: model</strong></td><td><code class="inline">BAAI/bge-m3</code></td></tr>
+    <tr><td><strong>파라미터: max_length</strong></td><td><code class="inline">512</code> 토큰 (초과분은 잘림)</td></tr>
+    <tr><td><strong>파라미터: normalize</strong></td><td><code class="inline">True</code> (코사인 유사도 계산을 위해 단위 벡터로 정규화)</td></tr>
+    <tr><td><strong>처리 방향</strong></td><td>인덱싱 시: 청크 1,095개 전체 임베딩 후 저장 / 질의 시: 질문 텍스트만 임베딩</td></tr>
+  </tbody>
+</table>
+
+<div class="box warn">
+  <span class="tag">주의: 512 토큰 잘림</span>
+  BGE-M3의 입력 한계는 512 토큰이다. 한국어 기준으로 1토큰 ≈ 1~2 글자, Kotlin 코드 기준으로 1토큰 ≈ 3~5 글자 수준이다. <code class="inline">StrategyResearchController.kt:26-296</code> 같은 270줄짜리 청크는 이 한계를 훌쩍 넘어서 뒷부분이 잘린 채로 임베딩된다. 즉, 그 청크의 하단 메서드들은 사실상 벡터에 반영되지 않는다. 청크를 더 작게 쪼개거나(overlap chunking), max_length를 늘릴 수 있는 모델로 교체하는 것이 개선 방향이다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 3: Qdrant 검색 + 실제 청크 카드 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 3 · Qdrant 적재/검색: 벡터DB에서 가장 가까운 이웃 찾기</h2>
+
+<p>Qdrant는 벡터를 저장하고 빠르게 검색하는 데이터베이스다. 인덱싱 시에 1,095개 청크의 벡터를 모두 저장해 두고, 질의 시에 질문 벡터와 가장 가까운(코사인 유사도가 높은) top-k개를 반환한다.</p>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력 (적재)</strong></td><td>청크 벡터 1,095개 + 메타데이터(file_path, start_line, end_line, kind, text)</td></tr>
+    <tr><td><strong>입력 (검색)</strong></td><td>질문 벡터 1개 (1024차원)</td></tr>
+    <tr><td><strong>출력 (검색)</strong></td><td>top-k 청크 목록, 각 청크에 코사인 유사도 점수 포함</td></tr>
+    <tr><td><strong>파라미터: top_k</strong></td><td><code class="inline">5</code> (상위 5개 청크 반환)</td></tr>
+    <tr><td><strong>파라미터: similarity</strong></td><td>코사인 유사도 (Cosine Similarity, 0~1, 높을수록 유사)</td></tr>
+    <tr><td><strong>파라미터: collection</strong></td><td>magicjar-slm-poc 레포 전용 컬렉션</td></tr>
+  </tbody>
+</table>
+
+<h3>실제 검색 결과: <code class="inline">demo_system</code> 질문</h3>
+<p>질문: <strong>"전략리서치 후보 발굴은 어떻게 동작해?"</strong></p>
+<p>Qdrant가 반환한 top-5 청크를 그대로 보여준다. 파일 경로에서 <code class="inline">/Users/ak-song/magicjar-slm-poc/</code> 프리픽스는 생략한다.</p>
+
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">1</span>
+    <span class="path">api/src/main/kotlin/kr/spdaewoon/magicjar/api/strategyresearch/StrategyResearchController.kt:26-296</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:63%"></span></div>
+    <span class="score-num">0.6315</span>
+  </div>
+  <div class="snippet">class StrategyResearchController(
+    private val strategyResearchService: StrategyResearchService,
+    private val strategyResearchAiDiscoveryService: StrategyResearchAiDiscoveryService,
+    private val strategyResearchCandidateService: StrategyResearchCandidateService,
+) {
+    @Operation(
+        summary = "리서치 후보 전략 목록",
+        description = "DB(V74 strategy_research_candidate)에 등록된 후보 전략 목록을 sort_order 순으로 조회합니다. ..."
+    )
+    @GetMapping("/candidates")
+    fun candidates(@RequestParam(required = false, defaultValue = "false") includeInactive: Boolean): List&lt;StrategyResearchCandidateDefinitionDto&gt;
+
+    @Operation(summary = "내 전략을 리서치 후보로 추가", ...)
+    @PostMapping("/candidates/from-strategy")
+    fun addCandidateFromStrategy(@RequestBody @Valid request: StrategyResearchCandidateFromStrategyRequestDto): StrategyResearchCandidateDefinitionDto
+
+    @PostMapping("/proposals")
+    fun propose(@RequestBody @Valid request: StrategyResearchRequestDto): StrategyResearchReportDto
+
+    @Operation(summary = "AI 종목발굴", description = "사용자 자연어를 Claude CLI 기반 후보 목록으로 변환한 뒤, 종목 마스터와 매핑합니다. ...")
+    @PostMapping("/ai-discovery")
+    fun discoverWithAi(@RequestBody @Valid request: StrategyResearchAiDiscoveryRequestDto): StrategyResearchAiDiscoveryResponseDto
+    // ... (270줄, /presets, /ai-discovery/core-prompt, /ai-discovery/latest 등 포함)</div>
+</div>
+
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">2</span>
+    <span class="path">api/src/main/kotlin/kr/spdaewoon/magicjar/api/strategyresearch/StrategyResearchDto.kt:396-413</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:60%"></span></div>
+    <span class="score-num">0.6035</span>
+  </div>
+  <div class="snippet">data class StrategyResearchCandidateFromStrategyRequestDto(
+    @field:Schema(description = "전략 소유자 사용자 ID", example = "74683223")
+    @field:NotBlank
+    val userId: String,
+    @field:Schema(description = "후보로 추가할 사용자 전략 id", example = "31")
+    @field:Min(1)
+    val strategyId: Long,
+    @field:Schema(description = "후보 노출명 override. 비우면 전략명 사용", example = "내 눌림목 전략")
+    @field:Size(max = 120)
+    val title: String? = null,
+    @field:Schema(description = "후보 키 override. 비우면 USER_&lt;strategyId&gt; 생성", example = "MY_PULLBACK")
+    @field:Pattern(regexp = "[A-Za-z0-9_]{1,64}")
+    val candidateKey: String? = null,
+    @field:Schema(description = "노출 순서. 비우면 기존 최대값 + 10", example = "200")
+    val sortOrder: Int? = null,
+)</div>
+</div>
+
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">3</span>
+    <span class="path">api/src/main/kotlin/kr/spdaewoon/magicjar/api/strategyresearch/StrategyResearchCandidateService.kt:23-144</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:60%"></span></div>
+    <span class="score-num">0.5997</span>
+  </div>
+  <div class="snippet">class StrategyResearchCandidateService(
+    private val candidateRepository: StrategyResearchCandidateJpaRepository,
+    private val strategyRepository: StrategyJpaRepository,
+    private val parser: KisYamlDslParser,
+    private val objectMapper: ObjectMapper,
+) {
+    fun list(includeInactive: Boolean): List&lt;StrategyResearchCandidateDefinitionDto&gt; { ... }
+
+    @Transactional
+    fun addFromStrategy(request: StrategyResearchCandidateFromStrategyRequestDto): StrategyResearchCandidateDefinitionDto {
+        // userId 검증, strategy 조회, 소유자 확인
+        // DSL 파싱 + static 화이트리스트 검증
+        val candidateKey = request.candidateKey ?: "USER_${strategy.id}"
+        // 중복 키 확인 후 StrategyResearchCandidateJpaEntity 저장
+        return saved.toDto()
+    }
+
+    @Transactional
+    fun delete(id: Long) { candidateRepository.deleteById(id) }
+    // ... (nextSortOrder, strategyEntryRules, toDto, parseRules 헬퍼 포함)</div>
+</div>
+
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">4</span>
+    <span class="path">api/src/main/kotlin/kr/spdaewoon/magicjar/api/strategyresearch/StrategyResearchDto.kt:366-395</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:60%"></span></div>
+    <span class="score-num">0.5951</span>
+  </div>
+  <div class="snippet">data class StrategyResearchCandidateDefinitionDto(
+    @field:Schema(description = "후보 DB id", example = "12")
+    val id: Long,
+    @field:Schema(description = "후보 고유 키", example = "MA10_RECLAIM_SCALP")
+    val key: String,
+    @field:Schema(description = "후보 노출명", example = "MA10 회복 반등 스캘프")
+    val title: String,
+    val marketFit: String,
+    val entryRules: List&lt;String&gt;,
+    @field:Schema(description = "진입 DSL 식(평가 권위)", example = "close crosses_above ma(10) and close &gt;= open")
+    val entryDsl: String,
+    val targetProfitPct: BigDecimal?,
+    val stopLossPct: BigDecimal?,
+    val maxHoldBars: Int?,
+    val sortOrder: Int,
+    val active: Boolean,
+    val builtIn: Boolean,
+    val updatedAt: String,
+)</div>
+</div>
+
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">5</span>
+    <span class="path">api/src/main/kotlin/kr/spdaewoon/magicjar/api/strategyresearch/StrategyResearchDto.kt:350-365</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:59%"></span></div>
+    <span class="score-num">0.5915</span>
+  </div>
+  <div class="snippet">data class StrategyResearchAiDiscoveryPresetRecommendItemDto(
+    @field:Schema(description = "프리셋 노출명(≤20자)", example = "장초반 수급 폭발")
+    val label: String,
+    @field:Schema(description = "프리셋 설명(≤80자, '~를 찾습니다' 톤)", example = "장 초반 거래대금이 급증하며 외국인 순매수가 들어오는 단기 모멘텀 후보를 찾습니다.")
+    val description: String,
+    @field:Schema(description = "Core wrapper 뒤에 주입되는 intent prompt(2~4문장 명령형)")
+    val promptText: String,
+    @field:Schema(description = "이 프리셋이 magicJar 검증 구조에 맞는 이유 1문장")
+    val rationale: String,
+)
+// =====================================================================
+// 후보 전략 DB CRUD DTO (research-candidates-db / V74)
+// =====================================================================</div>
+</div>
+
+<div class="box hypo">
+  <span class="tag">가설: 왜 코사인 점수가 0.59~0.63 근처인가?</span>
+  점수가 모두 0.59~0.63 사이에 몰려 있다. 이는 세 가지 원인이 복합된 것으로 보인다.
+  첫째, 질문("전략리서치 후보 발굴은 어떻게 동작해?")은 짧고 자연어인 반면, 청크는 긴 Kotlin 코드다. 언어 형식(자연어 vs 코드)이 달라서 의미 공간에서의 거리가 줄어들지 않는다.
+  둘째, 1번 청크(StrategyResearchController.kt:26-296)는 270줄이어서 512 토큰 임베딩 한계로 잘렸을 가능성이 높다. 잘린 벡터는 전체 내용을 대표하지 못한다.
+  셋째, 2~5번 청크의 점수 차이가 0.01 이내로 거의 동일하다. 이는 이 청크들이 같은 파일(StrategyResearchDto.kt)에 속하며 서로 비슷한 의미 좌표를 가지기 때문이다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 4: 프롬프트 조립 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 4 · 프롬프트 조립: 안전 가이드 + 증거 + 질문</h2>
+
+<p>검색으로 찾은 청크들을 모델에게 전달하기 위해 하나의 텍스트로 조립한다. 이 조립 방식이 답변 품질을 크게 좌우한다. 특히 <strong>시스템 프롬프트</strong>는 모델이 무엇을 해야 하는지, 무엇을 하면 안 되는지를 명시하는 안전 경계다.</p>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력</strong></td><td>① 시스템 프롬프트 (고정 텍스트) + ② top-5 청크 텍스트 + 메타데이터 + ③ 사용자 질문</td></tr>
+    <tr><td><strong>출력</strong></td><td>완성된 프롬프트 문자열 (demo_system: <strong>20,035자</strong>)</td></tr>
+    <tr><td><strong>형식: 컨텍스트 출처 표기</strong></td><td>각 청크를 <code class="inline">[n] 출처: {file_path}:{start_line}-{end_line} (kind={kind})</code> 형식으로 번호 붙여 나열</td></tr>
+    <tr><td><strong>형식: 답변 지시</strong></td><td>"한국어, 컨텍스트 근거. 출처 [n] 표기"</td></tr>
+  </tbody>
+</table>
+
+<h3>시스템 프롬프트 (전문)</h3>
+<p>이것이 모델에게 역할과 제약을 알려주는 안전 경계 텍스트다. 한 줄이지만 세 가지를 동시에 선언한다.</p>
+<pre class="code">당신은 magicJar 도메인 설명 도우미입니다. 설명·요약·초안만 제공합니다.
+주문/매매 실행, 전략 활성화, 실계좌 변경을 지시하거나 실행 가능한 명령으로 출력하지 마십시오.
+제공된 컨텍스트에 없는 내용은 모른다고 답하십시오.</pre>
+
+<div class="box concept">
+  <span class="tag">설계 의도</span>
+  시스템 프롬프트의 세 문장은 각각 다른 안전 레이어다.
+  ①<strong>"설명·요약·초안만"</strong>: 모델의 역할을 "읽기 전용 도우미"로 제한.
+  ②<strong>"주문/매매 실행…지시하거나"</strong>: 설령 사용자가 "이 전략 지금 실행해줘"라고 해도 모델이 거부하도록 유도.
+  ③<strong>"컨텍스트에 없는 내용은 모른다"</strong>: 모델의 훈련 데이터에서 hallucination이 나오는 것을 방어. 이것이 RAG의 핵심 안전 장치다.
+</div>
+
+<h3>실제 조립된 프롬프트 구조 (demo_system, 총 20,035자)</h3>
+<p>시스템 프롬프트 다음에 오는 컨텍스트 본문은 top-5 청크를 번호 붙여 이어 붙인 것이다. 아래는 앞부분 발췌다.</p>
+
+<pre class="code scroll">당신은 magicJar 도메인 설명 도우미입니다. 설명·요약·초안만 제공합니다. 주문/매매 실행, 전략 활성화, 실계좌 변경을 지시하거나 실행 가능한 명령으로 출력하지 마십시오. 제공된 컨텍스트에 없는 내용은 모른다고 답하십시오.
+
+### 컨텍스트
+[1] 출처: api/src/main/kotlin/.../strategyresearch/StrategyResearchController.kt:26-296 (kind=code)
+class StrategyResearchController(
+    private val strategyResearchService: StrategyResearchService,
+    private val strategyResearchAiDiscoveryService: StrategyResearchAiDiscoveryService,
+    private val strategyResearchCandidateService: StrategyResearchCandidateService,
+) {
+    @Operation(
+        summary = "리서치 후보 전략 목록",
+        description = "DB(V74 strategy_research_candidate)에 등록된 후보 전략 목록을 sort_order 순으로 조회합니다. ..."
+    )
+    @GetMapping("/candidates")
+    fun candidates(...): List&lt;StrategyResearchCandidateDefinitionDto&gt; = ...
+    ...
+    @PostMapping("/ai-discovery")
+    fun discoverWithAi(...): StrategyResearchAiDiscoveryResponseDto { ... }
+    ...
+}
+
+[2] 출처: api/src/main/kotlin/.../strategyresearch/StrategyResearchDto.kt:396-413 (kind=code)
+data class StrategyResearchCandidateFromStrategyRequestDto(
+    val userId: String,
+    val strategyId: Long,
+    val title: String? = null,
+    val candidateKey: String? = null,
+    val sortOrder: Int? = null,
+)
+
+[3] 출처: api/src/main/kotlin/.../strategyresearch/StrategyResearchCandidateService.kt:23-144 (kind=code)
+class StrategyResearchCandidateService(...) {
+    fun list(includeInactive: Boolean): List&lt;...&gt; { ... }
+    fun addFromStrategy(request: ...): ... { /* DSL 파싱·검증·저장 */ }
+    fun delete(id: Long) { ... }
+}
+
+[4] 출처: .../StrategyResearchDto.kt:366-395 (kind=code)
+data class StrategyResearchCandidateDefinitionDto(
+    val id: Long, val key: String, val title: String,
+    val entryDsl: String, val active: Boolean, ...
+)
+
+[5] 출처: .../StrategyResearchDto.kt:350-365 (kind=code)
+data class StrategyResearchAiDiscoveryPresetRecommendItemDto(
+    val label: String, val description: String,
+    val promptText: String, val rationale: String,
+)
+
+…(이하 생략, 총 20,035자)…
+
+### 질문
+전략리서치 후보 발굴은 어떻게 동작해?
+
+### 답변 (한국어, 컨텍스트 근거. 출처 [n] 표기)</pre>
+
+<div class="box hypo">
+  <span class="tag">가설: 왜 demo_system 프롬프트(20,035자)가 demo_dsl(약 7,000자)보다 훨씬 긴가?</span>
+  demo_system의 1번 청크는 270줄짜리 Controller 전체(6,000자 이상)다. 반면 demo_dsl의 청크들은 DTO 20줄·Markdown 25줄 수준의 작은 조각들이다. 검색된 청크의 크기 차이가 프롬프트 크기 차이로 직결된다. top-k=5로 같지만, 어떤 청크가 걸리느냐에 따라 프롬프트가 3배 이상 차이날 수 있다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 단계 5: 생성 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>단계 5 · 생성(Gemma3:4b): 프롬프트를 받아 한국어 답변 생성</h2>
+
+<p>완성된 프롬프트를 로컬 LLM에 넘기면, 모델은 컨텍스트를 읽고 질문에 답한다. 우리 랩은 Ollama 위에서 돌아가는 <strong>Gemma3:4b</strong>를 사용한다. 4b는 파라미터 수 40억 개를 뜻한다. 인터넷 연결 없이 완전히 로컬에서 실행된다.</p>
+
+<h3>입력 / 출력 / 파라미터</h3>
+<table>
+  <thead><tr><th>구분</th><th>내용</th></tr></thead>
+  <tbody>
+    <tr><td><strong>입력</strong></td><td>조립된 프롬프트 문자열 (최대 수만 자)</td></tr>
+    <tr><td><strong>출력</strong></td><td>한국어 답변 텍스트 (출처 [n] 표기 포함)</td></tr>
+    <tr><td><strong>파라미터: model</strong></td><td><code class="inline">gemma3:4b</code></td></tr>
+    <tr><td><strong>파라미터: temperature</strong></td><td><code class="inline">0</code> (결정론적 답변, 재현 가능)</td></tr>
+    <tr><td><strong>파라미터: request_timeout</strong></td><td>설정된 타임아웃 (랩 기본값 120초)</td></tr>
+    <tr><td><strong>파라미터: 실행 환경</strong></td><td>Ollama — 로컬 CPU/GPU</td></tr>
+  </tbody>
+</table>
+
+<h3>demo_system 실제 답변 전문</h3>
+
+<div class="box measured">
+  <span class="tag">실측값</span>
+  질문 "전략리서치 후보 발굴은 어떻게 동작해?" — 응답 지연: <strong>41,341ms (약 41초)</strong>
+</div>
+
+<pre class="code scroll">전략 리서치 후보 발굴 과정은 다음과 같습니다:
+
+1.  **후보 전략 목록 조회:** 먼저 DB(V74 strategy_research_candidate)에 등록된 모든 후보 전략을
+    가져옵니다. `candidates` 엔드포인트에서 설정한 `includeInactive` 파라미터에 따라 비활성 후보도
+    함께 포함될 수 있습니다.
+
+2.  **내 전략 추가:** 사용자가 저장한 전략(dsl_entry·손절/익절)을 리서치 후보로 승격할 수 있습니다.
+    이를 위해 `addCandidateFromStrategy` 엔드포인트에서 사용자 전략의 dsl_entry를 기반으로 새로운
+    후보 entry_dsl을 생성하고, 파싱 및 화이트리스트 검증을 통과해야 합니다.
+
+3.  **캔들 기반 전략 발굴:** `propose` 엔드포인트를 통해 사용자가 입력한 캔들 데이터(시작 시간,
+    종료 시간 등)를 기반으로 하락장 반등, 과매도 회복 등의 후보 전략을 평가합니다.
+    이 과정에서 저장, KIS 주문, live order Kafka topic 호출은 발생하지 않습니다.
+
+4.  **AI 종목 발굴:** `ai-discovery` 엔드포인트를 통해 Claude CLI를 활용하여 사용자 자연어 쿼리에
+    따라 종목 후보 목록을 생성하고, 마스터와 매핑합니다.
+
+5.  **프리셋 추천 및 관리:** AI 종목발굴 프리셋의 생성(createAiDiscoveryPreset),
+    수정(updateAiDiscoveryPreset) 및 삭제(deleteAiDiscoveryPreset)가 가능하며,
+    Core wrapper 프롬프트 또한 관리할 수 있습니다 (ai-discovery/core-prompt).
+
+6.  **최근 상태 조회:** 사용자별 최근 AI 종목발굴 조건과 후보 상태를 조회합니다 (latestAiDiscovery).
+
+이러한 과정을 통해 전략리서치 후보의 발굴 및 관리가 이루어집니다. (출처 [1], [2], [3], [4], [5])</pre>
+
+<div class="box concept">
+  <span class="tag">관찰</span>
+  모델이 출처 [1]~[5]를 잘 활용해 6단계 흐름을 정확히 정리했다. Controller의 엔드포인트 목록([1])을 뼈대로 삼고, Service([3])와 DTO([2],[4],[5])를 보조 근거로 활용했다. "저장, KIS 주문, live order Kafka topic 호출은 발생하지 않습니다"라는 안전 문구도 컨텍스트에서 직접 가져와 그대로 인용했다.
+</div>
+
+<h3>demo_dsl 답변 (요약)</h3>
+
+<div class="box measured">
+  <span class="tag">실측값</span>
+  질문 "RSI가 30 이하일 때 매수하는 전략을 우리 DSL로 어떻게 표현하나요?" — 응답 지연: <strong>28,369ms (약 28초)</strong>
+</div>
+
+<p>모델은 다음과 같이 답했다:</p>
+<pre class="code">close crosses_below ma(20) and rsi &lt; 30</pre>
+<p>그리고 검색된 청크([2]: DSL AST 구조, [3]: 지원 operator 목록)를 근거로 <code class="inline">crosses_below</code>, <code class="inline">and</code>, <code class="inline">rsi</code>가 모두 화이트리스트 식별자임을 설명했다. <code class="inline">dslValid</code>, <code class="inline">dslError</code> 필드와 <code class="inline">StrategyBuilderAiGenerateItemDto</code>에 저장될 수 있다는 정보도 출처 [1]을 인용해 제공했다.</p>
+
+<div class="box hypo">
+  <span class="tag">가설: 왜 demo_dsl(28초)이 demo_system(41초)보다 빠른가?</span>
+  두 가지 이유가 복합된다. 첫째, demo_dsl 프롬프트가 약 7,000자로 demo_system(20,035자)의 1/3 수준이다. 입력 토큰 수가 적으면 prefill(입력 처리) 시간이 줄어든다. 둘째, demo_dsl 답변이 demo_system 답변보다 짧다. 로컬 CPU/GPU에서 Gemma3:4b는 출력 토큰 생성 속도가 하드웨어에 직접 비례하므로, 출력 길이가 짧을수록 빠르다. GPU 가속이 없는 CPU 전용 환경이라면 토큰당 수백ms가 걸리는 것도 이상하지 않다.
+</div>
+</section>
+
+<!-- ───────────────────────────────────────────────────────────── -->
+<!-- 섹션 8: 한 장 요약 표 -->
+<!-- ───────────────────────────────────────────────────────────── -->
+<section>
+<h2>8. 한 장으로 보는 데이터 흐름</h2>
+
+<p>지금까지 걸어온 6단계를 한 표에 정리한다.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>단계</th>
+      <th>입력</th>
+      <th>출력</th>
+      <th>주요 파라미터</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>0 · 코퍼스 큐레이션</strong></td>
+      <td>레포 전체 파일 트리</td>
+      <td>선정 파일 목록 (71개)</td>
+      <td>include 패턴, exclude 패턴 (.env*, build/ 등)</td>
+    </tr>
+    <tr>
+      <td><strong>1 · 청킹</strong></td>
+      <td>파일 텍스트 71개</td>
+      <td>청크 1,095개<br>(file_path, start/end_line, kind, text)</td>
+      <td>코드: 최상위 선언 경계, 문서: 헤딩 단위</td>
+    </tr>
+    <tr>
+      <td><strong>2 · 임베딩</strong></td>
+      <td>청크 텍스트 (문자열)</td>
+      <td>1024차원 float32 벡터</td>
+      <td>model=BAAI/bge-m3, max_length=512, normalize=True</td>
+    </tr>
+    <tr>
+      <td><strong>3 · Qdrant 저장/검색</strong></td>
+      <td>벡터 + 메타데이터 (적재)<br>질문 벡터 (검색)</td>
+      <td>1,095 포인트 저장 (적재)<br>top-5 청크 + 점수 (검색)</td>
+      <td>top_k=5, similarity=cosine</td>
+    </tr>
+    <tr>
+      <td><strong>4 · 프롬프트 조립</strong></td>
+      <td>시스템 프롬프트 + top-5 청크 + 질문</td>
+      <td>완성 프롬프트 (demo_system: 20,035자)</td>
+      <td>출처 번호 [n] 형식, 언어 지시(한국어)</td>
+    </tr>
+    <tr>
+      <td><strong>5 · 생성</strong></td>
+      <td>완성 프롬프트</td>
+      <td>한국어 답변 + 출처 [n] 표기</td>
+      <td>model=gemma3:4b, temperature=0, 로컬 Ollama</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="flow">
+  <div class="node io"><b>레포 파일</b><div class="sub">71개 선정</div></div>
+  <div class="arrow">↓ 청킹</div>
+  <div class="node io"><b>청크 1,095개</b><div class="sub">file, lines, kind, text</div></div>
+  <div class="arrow">↓ BGE-M3 임베딩</div>
+  <div class="node io"><b>벡터 1,095개</b><div class="sub">1024차원 float32</div></div>
+  <div class="arrow">↓ Qdrant 저장</div>
+  <div class="node"><b>벡터DB</b><div class="sub">인덱싱 완료 ✓</div></div>
+  <div class="arrow">↓ — 여기서부터 매 질의 —</div>
+  <div class="node io"><b>사용자 질문</b><div class="sub">"전략리서치 후보 발굴은?"</div></div>
+  <div class="arrow">↓ BGE-M3 임베딩</div>
+  <div class="node io"><b>질문 벡터</b><div class="sub">1024차원</div></div>
+  <div class="arrow">↓ Qdrant top-5 검색</div>
+  <div class="node io"><b>top-5 청크</b><div class="sub">점수 0.59~0.63</div></div>
+  <div class="arrow">↓ 프롬프트 조립</div>
+  <div class="node io"><b>완성 프롬프트</b><div class="sub">20,035자</div></div>
+  <div class="arrow">↓ Gemma3:4b 생성 (41초)</div>
+  <div class="node io"><b>한국어 답변</b><div class="sub">출처 [1]~[5] 표기</div></div>
+</div>
+
+<details>
+<summary>보너스: 각 단계별 "가장 많이 나오는 질문"</summary>
+<table>
+  <thead><tr><th>질문</th><th>답</th></tr></thead>
+  <tbody>
+    <tr><td>인덱싱을 다시 해야 할 때는?</td><td>코드가 바뀌었을 때. 그냥 두면 옛날 청크에서 검색된다.</td></tr>
+    <tr><td>top_k를 더 크게 하면 좋지 않나?</td><td>프롬프트가 길어지고 생성 속도가 느려진다. 관련 없는 청크가 섞여 오히려 답변이 나빠질 수 있다.</td></tr>
+    <tr><td>temperature=0이면 창의성이 없지 않나?</td><td>코드 해석·도메인 설명 용도에선 재현성이 더 중요하다. 전략 아이디어 브레인스토밍이라면 0.3~0.7로 높일 수 있다.</td></tr>
+    <tr><td>BGE-M3 말고 다른 임베딩 모델?</td><td>bge-m3는 다국어 + 긴 문서에 강하다. 순수 영어 코드만 있다면 code-embedding 특화 모델이 더 높은 점수를 낼 수도 있다.</td></tr>
+  </tbody>
+</table>
+</details>
+</section>
+
+<nav class="chapter-nav">
+  <a href="ch01-큰그림.html"><span class="dir">← 이전</span>1장 · 큰 그림</a>
+  <a href="ch03-직접보기.html"><span class="dir">다음 →</span>3장 · 직접 보기</a>
+</nav>
+</div>
+</body>
+</html>
