@@ -45,11 +45,20 @@ def run_eval(limit: int | None = None) -> pd.DataFrame:
         questions = questions[:limit]
 
     # --- 1단계: Opus-as-judge 평가 (ragas 없이도 항상 완료해야 함) ---
+    # 문항별로 opus/judge 호출을 보호한다. 한 문항이 실패(타임아웃 등)해도
+    # 나머지 문항 결과를 잃지 않도록 winner="error"로 기록하고 계속 진행한다.
+    nan = float("nan")
     rows: list[dict] = []
-    for q in questions:
+    total = len(questions)
+    for i, q in enumerate(questions, 1):
         rag = answer(q.question)
-        opus = opus_answer(q.question)
-        verdict = judge_pair(q.question, opus, rag.answer)
+        try:
+            opus = opus_answer(q.question)
+            verdict = judge_pair(q.question, opus, rag.answer)
+            winner, score = verdict["winner"], verdict["gemma_score"]
+        except Exception as e:  # noqa: BLE001 - 평가 강건성: 문항 단위 격리
+            print(f"[eval] {q.id} opus/judge 실패 → 스킵: {e}")
+            opus, winner, score = f"(생성 실패: {e})", "error", nan
         rows.append(
             {
                 "id": q.id,
@@ -58,11 +67,12 @@ def run_eval(limit: int | None = None) -> pd.DataFrame:
                 "gemma_answer": rag.answer,
                 "opus_answer": opus,
                 "contexts": [r.text for r in rag.retrieved],
-                "winner": verdict["winner"],
-                "gemma_score": verdict["gemma_score"],
+                "winner": winner,
+                "gemma_score": score,
                 "latency_ms": rag.latency_ms,
             }
         )
+        print(f"[eval] {i}/{total} {q.id} winner={winner} score={score} latency={rag.latency_ms}ms")
 
     df = pd.DataFrame(rows)
 
@@ -98,10 +108,17 @@ def run_eval(limit: int | None = None) -> pd.DataFrame:
         vals = series.dropna()
         return float(vals.mean()) if len(vals) > 0 else nan
 
+    # 승률/무승부율은 정상 채점된(error 제외) 문항만 분모로 삼는다.
+    judged = df[df["winner"] != "error"]
+    n_judged = len(judged)
     summary = {
-        "gemma_win_rate": (df["winner"] == "gemma").mean(),
-        "tie_rate": (df["winner"] == "tie").mean(),
-        "avg_gemma_score": df["gemma_score"].mean(),
+        "n_total": len(df),
+        "n_judged": n_judged,
+        "n_error": int((df["winner"] == "error").sum()),
+        "gemma_win_rate": (judged["winner"] == "gemma").mean() if n_judged else nan,
+        "opus_win_rate": (judged["winner"] == "opus").mean() if n_judged else nan,
+        "tie_rate": (judged["winner"] == "tie").mean() if n_judged else nan,
+        "avg_gemma_score": _safe_mean(df["gemma_score"]),
         "avg_faithfulness": _safe_mean(df["faithfulness"]),
         "avg_answer_relevancy": _safe_mean(df["answer_relevancy"]),
         "avg_context_precision": _safe_mean(df["context_precision"]),
@@ -112,7 +129,12 @@ def run_eval(limit: int | None = None) -> pd.DataFrame:
     with open(RESULTS_MD, "w", encoding="utf-8") as f:
         f.write("# RAG Phase 1 Eval\n\n## Summary\n\n")
         for k, v in summary.items():
-            v_str = f"{v:.3f}" if not (isinstance(v, float) and math.isnan(v)) else "NaN"
+            if isinstance(v, float) and math.isnan(v):
+                v_str = "NaN"
+            elif isinstance(v, int):
+                v_str = str(v)
+            else:
+                v_str = f"{v:.3f}"
             f.write(f"- {k}: {v_str}\n")
     print(summary)
     return df

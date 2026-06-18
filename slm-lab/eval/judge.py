@@ -6,15 +6,29 @@ import subprocess
 _CLAUDE_BIN = shutil.which("claude") or "/Users/ak-song/.local/bin/claude"
 
 
+_TIMEOUT = 300
+_RETRIES = 2
+
+
 def _claude(prompt: str) -> str:
-    """로컬 Claude CLI를 비대화형으로 호출 (기존 ClaudeCli 다리와 동일 경로)."""
-    proc = subprocess.run(
-        [_CLAUDE_BIN, "-p", prompt],
-        capture_output=True, text=True, timeout=180,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI 실패: {proc.stderr[:200]}")
-    return proc.stdout.strip()
+    """로컬 Claude CLI를 비대화형으로 호출 (기존 ClaudeCli 다리와 동일 경로).
+
+    동시 호출 경합 등으로 간헐적 행이 발생할 수 있어 타임아웃 시 재시도한다.
+    """
+    last_err: Exception | None = None
+    for _ in range(_RETRIES):
+        try:
+            proc = subprocess.run(
+                [_CLAUDE_BIN, "-p", prompt],
+                capture_output=True, text=True, timeout=_TIMEOUT,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(f"claude CLI 실패: {proc.stderr[:200]}")
+            return proc.stdout.strip()
+        except subprocess.TimeoutExpired as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"claude CLI 타임아웃({_TIMEOUT}s) x{_RETRIES}") from last_err
 
 
 def opus_answer(question: str) -> str:
