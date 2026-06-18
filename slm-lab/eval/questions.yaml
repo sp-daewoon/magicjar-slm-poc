@@ -1,0 +1,90 @@
+- id: q01
+  category: system
+  question: 전략리서치 AI 후보 발굴(StrategyResearchAiDiscovery)은 전체적으로 어떤 흐름으로 동작하나요?
+- id: q02
+  category: system
+  question: StrategyResearchAiTextClient 인터페이스의 역할과 반환값은 무엇인가요?
+- id: q03
+  category: system
+  question: AI가 생성한 후보를 magicJar가 어떻게 검증/필터링한 뒤 사용자에게 보여주나요?
+- id: q04
+  category: system
+  question: 전략 빌더에서 AI 생성(StrategyBuilderAiGenerate)의 입력과 출력은 무엇인가요?
+- id: q05
+  category: system
+  question: instrument matching(종목 매칭)은 어느 단계에서 수행되나요?
+- id: q06
+  category: dsl
+  question: RSI가 30 이하일 때 매수하는 전략을 우리 DSL로 어떻게 표현하나요?
+- id: q07
+  category: dsl
+  question: 골든크로스(단기 이평선이 장기 이평선을 상향 돌파) 조건을 DSL로 어떻게 쓰나요?
+- id: q08
+  category: dsl
+  question: DSL에서 사용 가능한 지표(indicator) 종류에는 무엇이 있나요?
+- id: q09
+  category: dsl
+  question: DSL 파싱이 실패하면 어떤 형태의 경고/에러가 반환되나요?
+- id: q10
+  category: dsl
+  question: 매수 조건과 매도 조건을 함께 정의하는 DSL 구조는 어떻게 되나요?
+- id: q11
+  category: system
+  question: 전략리서치에서 warnings는 언제 생성되고 무엇을 의미하나요?
+- id: q12
+  category: system
+  question: AI 프롬프트는 어디서 어떻게 구성되나요(코어 프롬프트와 사용자 입력의 결합)?
+- id: q13
+  category: system
+  question: 후보 아이템의 상태(item status)는 어떤 값들이 있고 어떻게 바뀌나요?
+- id: q14
+  category: system
+  question: preset 추천(PresetRecommend)은 일반 discovery와 무엇이 다른가요?
+- id: q15
+  category: dsl
+  question: 볼린저 밴드 하단 터치 시 매수하는 전략을 DSL로 어떻게 표현하나요?
+- id: q16
+  category: dsl
+  question: 거래량 급증 조건을 DSL로 표현하려면 어떤 지표/연산자를 쓰나요?
+- id: q17
+  category: system
+  question: 이 PoC에서 SLM 출력이 절대 해서는 안 되는 동작은 무엇인가요?
+- id: q18
+  category: system
+  question: MAGICJAR_MODE=MOCK는 무엇을 보장하나요?
+- id: q19
+  category: dsl
+  question: 여러 조건을 AND/OR로 결합하는 DSL 문법은 어떻게 되나요?
+- id: q20
+  category: dsl
+  question: "특정 종목군(예: 코스닥 중소형주)을 대상으로 제한하는 표현이 DSL에 있나요?"
+- id: q21
+  category: system
+  question: AI discovery 결과의 JSON 스키마(필드 구성)는 어떻게 되나요?
+- id: q22
+  category: system
+  question: 응답 파싱 시 malformed JSON은 어떻게 처리되나요?
+- id: q23
+  category: system
+  question: 전략리서치 서비스에서 타임아웃/실패는 어떻게 다뤄지나요?
+- id: q24
+  category: dsl
+  question: MACD 시그널 교차를 매매 신호로 쓰는 DSL 예시는?
+- id: q25
+  category: dsl
+  question: 손절(stop loss)·익절(take profit)을 DSL로 표현할 수 있나요?
+- id: q26
+  category: system
+  question: 프론트엔드 AiDiscoveryCard는 어떤 데이터를 표시하나요?
+- id: q27
+  category: system
+  question: 후보 발굴에서 사용자 선택(user-controlled selection)은 어디에 반영되나요?
+- id: q28
+  category: dsl
+  question: 이동평균선 기간(period)을 바꾸려면 DSL에서 어디를 수정하나요?
+- id: q29
+  category: system
+  question: SLM provider를 ollama로 고르는 설정 키는 무엇인가요?
+- id: q30
+  category: system
+  question: 이 랩이 원본 magicJar 스택과 격리되는 방식(포트/컨테이너/DB)은 무엇인가요?
