@@ -14,10 +14,14 @@ def test_includes_only_allowlisted_files(fake_repo: Path):
 
 def test_excludes_patterns(fake_repo: Path):
     files = discover_files(fake_repo, INCLUDE_DIRS, INCLUDE_EXTS, EXCLUDE)
-    joined = " ".join(str(f) for f in files)
-    assert "build" not in joined
-    assert ".env" not in joined
-    assert ".pem" not in joined
+    names = {f.name for f in files}
+    # build artifact, .env, and .pem must be excluded from results
+    assert "Generated.kt" not in names
+    assert not any(f.name == ".env" for f in files)
+    assert not any(f.suffix == ".pem" for f in files)
+    # none of the discovered files may live under an excluded build/ dir
+    rels = [f.relative_to(fake_repo).as_posix() for f in files]
+    assert all("build/" not in r for r in rels)
 
 
 def test_returns_sorted_absolute_paths(fake_repo: Path):
