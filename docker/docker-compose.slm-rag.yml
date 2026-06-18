@@ -1,0 +1,16 @@
+name: magicjar-slm-rag
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: magicjar-slm-qdrant
+    ports:
+      - "16333:6333"
+    volumes:
+      - magicjar-slm-qdrant:/qdrant/storage
+  phoenix:
+    image: arizephoenix/phoenix:version-7.9.0
+    container_name: magicjar-slm-phoenix
+    ports:
+      - "16006:6006"   # UI + OTLP HTTP
+volumes:
+  magicjar-slm-qdrant:
