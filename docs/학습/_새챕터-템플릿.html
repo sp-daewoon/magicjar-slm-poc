@@ -1,0 +1,115 @@
+<!doctype html>
+<!--
+  ================================================================
+  새 챕터 만들기 템플릿  (이 파일은 목차에 링크하지 않는 작업용 견본)
+  ================================================================
+  사용법:
+  1) 이 파일을 chNN-제목.html 로 복사   (예: ch05-전체평가결과.html)
+  2) <title>, .kicker(Chapter N), <h1>, .lead 를 채운다
+  3) 아래 "여기부터 본문" ~ "여기까지 본문" 사이를 작성한다
+  4) chapter-nav 의 이전/다음 링크를 실제 파일로 바꾼다
+  5) index.html 목차(.toc)에 카드 추가 + 상단 .topnav 에 링크 추가
+  6) 검증: 브라우저로 열어보고, class 는 assets/book.css 에 정의된 것만 쓴다
+  아래 본문은 "컴포넌트 치트시트"다 — 필요한 블록을 복사해서 쓰면 된다.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>N장 · 제목 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+<a href="guide-실행가이드.html">부록 실행 가이드</a>
+<!-- 새 챕터를 만들면 여기에도 한 줄 추가 -->
+</div></nav>
+
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Chapter N</div>
+  <h1>여기에 챕터 제목</h1>
+  <p class="lead">한 줄 요약 — 이 챕터에서 무엇을 배우는가.</p>
+</header>
+
+<!-- ===================== 여기부터 본문 ===================== -->
+
+<h2>섹션 제목 (h2)</h2>
+<p>본문 문단. 인라인 용어는 <code class="inline">code.inline</code> 으로, <strong>강조</strong>는 strong.</p>
+<h3>소제목 (h3)</h3>
+
+<!-- 콜아웃 박스 4종 (tag 라벨은 자유롭게) -->
+<div class="box concept"><span class="tag">개념</span><p>새 용어를 1원리부터 초보 기준으로 설명.</p></div>
+<div class="box analogy"><span class="tag">비유</span><p>일상 비유로 직관 잡기.</p></div>
+<div class="box hypo"><span class="tag">가설</span><p>"왜 이렇게 됐나"의 추론. 추측은 반드시 가설로 표시.</p></div>
+<div class="box warn"><span class="tag">⚠ 주의/한계</span><p>알려진 한계나 함정을 정직하게.</p></div>
+<div class="box measured"><span class="tag">실측</span><p>실제로 돌려서 나온 숫자/결과.</p></div>
+
+<!-- 코드/콘솔 블록 ( < > & 는 &lt; &gt; &amp; 로 이스케이프 ) -->
+<pre class="code">uv run python -m rag.indexing
+# indexed files=71 chunks=1095</pre>
+<pre class="code scroll">긴 출력은 class="code scroll" 로 (최대 높이 + 스크롤)</pre>
+
+<!-- 표 -->
+<table>
+  <tr><th>항목</th><th>값</th><th>설명</th></tr>
+  <tr><td>예시</td><td>1024</td><td>BGE-M3 임베딩 차원</td></tr>
+</table>
+
+<!-- 플로우 다이어그램 -->
+<div class="flow">
+  <div class="node io"><b>입력</b><div class="sub">질문</div></div>
+  <div class="arrow">↓</div>
+  <div class="node"><b>처리 단계</b><div class="sub">설명</div></div>
+  <div class="arrow">↓</div>
+  <div class="node io"><b>출력</b><div class="sub">답변</div></div>
+</div>
+
+<!-- 검색 청크 카드 (점수 막대: width = 점수*100%) -->
+<div class="chunk">
+  <div class="meta">
+    <span class="rank">1</span>
+    <span class="path">api/.../StrategyResearchController.kt:0-30</span>
+    <span class="kind">code</span>
+    <div class="scorebar"><span style="width:63%"></span></div>
+    <span class="score-num">0.6315</span>
+  </div>
+  <div class="snippet">검색된 코드/문서 스니펫 (이스케이프 필요)</div>
+</div>
+
+<!-- 브라우저 캡쳐 목업 ( .body.dark 는 Phoenix 같은 다크 UI용 ) -->
+<div class="browser">
+  <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="url">localhost:18501</span></div>
+  <div class="body">화면을 HTML로 재현 <span class="mock-label">재현 목업</span></div>
+</div>
+
+<!-- 번호 단계 -->
+<ol class="steps">
+  <li>첫 단계</li>
+  <li>둘째 단계</li>
+</ol>
+
+<!-- 접이식 딥다이브 -->
+<details><summary>더 깊이 (선택)</summary><div class="body">고급 내용.</div></details>
+
+<!-- 2열 그리드 (박스 두 개 나란히) -->
+<div class="grid2">
+  <div class="box concept"><span class="tag">A</span><p>왼쪽</p></div>
+  <div class="box concept"><span class="tag">B</span><p>오른쪽</p></div>
+</div>
+
+<!-- ===================== 여기까지 본문 ===================== -->
+
+<nav class="chapter-nav">
+  <a href="ch04-측정과가설.html"><span class="dir">← 이전</span>이전 장 제목</a>
+  <a href="index.html"><span class="dir">목차 →</span>책 표지로</a>
+</nav>
+</div>
+</body>
+</html>
