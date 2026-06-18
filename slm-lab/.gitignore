@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+eval/results.csv
+eval/results.md
