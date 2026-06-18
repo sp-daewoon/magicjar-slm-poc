@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3장 · 직접 보기 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+</div></nav>
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Chapter 3</div>
+  <h1>직접 보기: Phoenix · Streamlit · Qdrant 관측 가이드</h1>
+  <p class="lead">RAG는 눈으로 봐야 이해된다 — 무엇이 검색됐고, 어떤 프롬프트가 갔고, 어디에 저장됐는지 실제로 보는 법.</p>
+</header>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 1: 세 개의 창구
+     ═══════════════════════════════════════════════ -->
+<h2>먼저: 세 개의 창구</h2>
+
+<p>이 챕터에서 실제로 열어 볼 화면은 딱 세 개입니다. 겁먹지 마세요 — 브라우저 탭 세 개면 충분합니다.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>도구</th>
+      <th>URL</th>
+      <th>무엇을 보나</th>
+      <th>한 마디로</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Streamlit</strong></td>
+      <td><code class="inline">localhost:18501</code></td>
+      <td>질문 입력 → 검색된 청크 → 실제 프롬프트 → 답변을 한 화면에서 체험</td>
+      <td>체험·내부 펼침</td>
+    </tr>
+    <tr>
+      <td><strong>Arize Phoenix</strong></td>
+      <td><code class="inline">localhost:16006</code></td>
+      <td>질의마다 retrieve→LLM 스팬, 청크·점수·지연을 타임라인으로 해부</td>
+      <td>현업식 트레이스 해부</td>
+    </tr>
+    <tr>
+      <td><strong>Qdrant</strong></td>
+      <td><code class="inline">localhost:16333/dashboard</code></td>
+      <td>벡터 DB에 저장된 청크 수, 차원, 거리 함수, 개별 포인트 payload 확인</td>
+      <td>저장된 벡터 확인</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="box analogy">
+  <span class="tag">비유</span>
+  <p>Streamlit은 <strong>운전석</strong>입니다. 직접 핸들을 잡고 RAG가 어떻게 반응하는지 느낍니다.<br>
+  Phoenix는 <strong>블랙박스 리더</strong>입니다. 운전 후 기록을 열어 "그 순간에 정확히 무슨 일이 있었냐"를 밀리초 단위로 해부합니다.<br>
+  Qdrant는 <strong>창고 대장</strong>입니다. 청크들이 실제로 어떻게 정렬돼 저장돼 있는지 직접 눈으로 확인합니다.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 2: 0단계 · 인프라 켜기
+     ═══════════════════════════════════════════════ -->
+<h2>0단계 · 인프라 켜기</h2>
+
+<p>세 화면을 열기 전에 도커 컨테이너와 ollama 모델이 살아 있어야 합니다. 터미널 두 개를 열고 순서대로 실행하세요.</p>
+
+<h3>① 도커 인프라 기동</h3>
+<pre class="code"># 프로젝트 루트에서
+docker compose -f docker/docker-compose.slm-rag.yml up -d</pre>
+
+<p>정상 기동 시 다음과 비슷한 출력이 보입니다.</p>
+<pre class="code"> ✔ Container magicjar-slm-qdrant   Started
+ ✔ Container magicjar-slm-phoenix  Started
+ ✔ Container magicjar-slm-ollama   Started</pre>
+
+<h3>② Streamlit 앱 실행</h3>
+<pre class="code">cd slm-lab
+uv run streamlit run rag/app.py --server.port 18501</pre>
+
+<p>터미널에 <code class="inline">You can now view your Streamlit app in your browser.</code>가 보이면 준비 완료입니다.</p>
+
+<h3>③ 각 URL이 떴는지 확인</h3>
+<ol class="steps">
+  <li>브라우저에서 <code class="inline">http://localhost:18501</code> 접속 → Streamlit 채팅 화면이 보이면 OK.</li>
+  <li>브라우저에서 <code class="inline">http://localhost:16006</code> 접속 → Phoenix 대시보드가 보이면 OK.</li>
+  <li>브라우저에서 <code class="inline">http://localhost:16333/dashboard</code> 접속 → Qdrant 대시보드가 보이면 OK.</li>
+  <li>안 보인다면 <code class="inline">docker compose -f docker/docker-compose.slm-rag.yml ps</code>로 상태를 확인하세요.</li>
+</ol>
+
+<div class="box warn">
+  <span class="tag">주의</span>
+  <p>ollama 모델 다운로드가 아직 안 돼 있다면 Streamlit이 첫 질문에서 타임아웃이 납니다. <code class="inline">ollama pull nomic-embed-text</code>와 <code class="inline">ollama pull gemma3:4b</code>를 미리 돌려 두세요. 다운로드는 한 번만 하면 됩니다.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 3: Streamlit로 체험하기
+     ═══════════════════════════════════════════════ -->
+<h2>Streamlit로 체험하기 <span class="mock-label">재현 목업</span></h2>
+
+<p><code class="inline">http://localhost:18501</code>을 열면 아래와 같은 화면이 보입니다.</p>
+
+<div class="browser">
+  <div class="bar">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="url">localhost:18501</span>
+  </div>
+  <div class="body">
+    <!-- 사이드바 영역 -->
+    <div style="display:flex;gap:16px;min-height:540px;">
+      <div style="width:200px;background:#f0f2f6;border-radius:8px;padding:14px;flex-shrink:0;">
+        <div style="font-weight:700;margin-bottom:10px;font-size:13px;color:#555;">⚙️ 설정</div>
+        <div style="font-size:13px;color:#555;margin-bottom:6px;">Top-K 청크 수</div>
+        <div style="background:#dde;border-radius:6px;padding:6px 10px;display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <div style="flex:1;height:4px;background:#bbc;border-radius:3px;position:relative;">
+            <div style="width:60%;height:100%;background:#5464ff;border-radius:3px;"></div>
+            <div style="width:12px;height:12px;border-radius:50%;background:#5464ff;position:absolute;left:57%;top:-4px;"></div>
+          </div>
+          <strong style="font-size:13px;color:#333;">3</strong>
+        </div>
+        <div style="font-size:12px;color:#888;">슬라이더를 움직이면<br>검색 청크 수가 바뀝니다.<br>1~10 범위.</div>
+      </div>
+
+      <!-- 메인 채팅 영역 -->
+      <div style="flex:1;display:flex;flex-direction:column;gap:12px;">
+        <div style="font-size:18px;font-weight:700;color:#1a1a2e;padding-bottom:8px;border-bottom:2px solid #e0e3ea;">
+          🤖 magicJar SLM RAG 챗
+        </div>
+
+        <!-- 질문 -->
+        <div style="background:#eef2ff;border-radius:10px;padding:10px 14px;align-self:flex-end;max-width:80%;font-size:14px;">
+          <strong>나:</strong> FVG 전략에서 포지션 진입 조건은 어떻게 설정하나요?
+        </div>
+
+        <!-- 검색 청크 펼침 -->
+        <details open style="border:1px solid #dde;border-radius:8px;background:#f8f9fc;">
+          <summary style="padding:8px 12px;font-size:13px;font-weight:700;color:#444;cursor:pointer;">
+            ① 검색된 청크 (top-3) — 펼쳐서 확인
+          </summary>
+          <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+            <!-- Chunk 1 -->
+            <div class="chunk">
+              <div class="meta">
+                <span class="rank">1</span>
+                <span class="path">strategies/fvg_strategy.py · lines 42-71</span>
+                <div class="scorebar"><span style="width:81%"></span></div>
+                <span class="score-num">0.81</span>
+              </div>
+              <div class="snippet">def enter_long(self, bar):
+    fvg = self.detect_fvg(bar)
+    if fvg and bar.close &gt; fvg.upper:
+        return EntrySignal(side='LONG', price=bar.close)</div>
+            </div>
+            <!-- Chunk 2 -->
+            <div class="chunk">
+              <div class="meta">
+                <span class="rank">2</span>
+                <span class="path">docs/strategy_guide.md · lines 118-140</span>
+                <div class="scorebar"><span style="width:63%"></span></div>
+                <span class="score-num">0.63</span>
+              </div>
+              <div class="snippet">FVG(Fair Value Gap)는 연속된 3개 캔들에서 중간 캔들의
+고/저가가 앞뒤 캔들과 겹치지 않을 때 생성됩니다.
+진입 조건: 가격이 갭 상단을 재돌파하는 순간.</div>
+            </div>
+            <!-- Chunk 3 -->
+            <div class="chunk">
+              <div class="meta">
+                <span class="rank">3</span>
+                <span class="path">config/strategy_params.yaml · lines 7-22</span>
+                <div class="scorebar"><span style="width:54%"></span></div>
+                <span class="score-num">0.54</span>
+              </div>
+              <div class="snippet">fvg_strategy:
+  min_gap_pct: 0.003
+  entry_confirm: close_above_upper
+  stop_offset_pct: 0.005</div>
+            </div>
+          </div>
+        </details>
+
+        <!-- 최종 프롬프트 펼침 -->
+        <details style="border:1px solid #dde;border-radius:8px;background:#f8f9fc;">
+          <summary style="padding:8px 12px;font-size:13px;font-weight:700;color:#444;cursor:pointer;">
+            ② 모델에 실제로 들어간 최종 프롬프트 — 펼쳐서 확인
+          </summary>
+          <div style="padding:10px 12px;">
+            <pre style="background:#1b1f2a;color:#d7dce6;border-radius:8px;padding:10px 12px;font-size:12px;overflow:auto;white-space:pre-wrap;">System: 너는 magicJar 코드베이스 전문 어시스턴트야.
+아래 컨텍스트만 사용해서 한국어로 답변해.
+
+Context:
+[1] strategies/fvg_strategy.py (lines 42-71)
+def enter_long(self, bar):
+    fvg = self.detect_fvg(bar)
+    if fvg and bar.close &gt; fvg.upper:
+        return EntrySignal(side='LONG', price=bar.close)
+
+[2] docs/strategy_guide.md (lines 118-140)
+FVG(Fair Value Gap)는 연속된 3개 캔들에서...
+
+[3] config/strategy_params.yaml (lines 7-22)
+fvg_strategy:
+  min_gap_pct: 0.003
+  ...
+
+User: FVG 전략에서 포지션 진입 조건은 어떻게 설정하나요?</pre>
+          </div>
+        </details>
+
+        <!-- 답변 -->
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:10px 14px;font-size:14px;">
+          <strong>🤖 답변:</strong> FVG 전략의 진입 조건은 <code>enter_long()</code> 메서드에 구현돼 있습니다.
+          핵심은 <strong>가격이 FVG 상단(upper)을 종가 기준으로 재돌파</strong>할 때 롱 진입 신호를 생성하는 것입니다.
+          파라미터로 <code>min_gap_pct: 0.003</code>(최소 갭 크기 0.3%)와 <code>entry_confirm: close_above_upper</code>(종가 확인)가 사용됩니다.
+        </div>
+
+        <!-- 입력창 -->
+        <div style="display:flex;gap:8px;margin-top:auto;">
+          <div style="flex:1;border:1px solid #d0d5dd;border-radius:8px;padding:8px 12px;font-size:14px;color:#999;background:#fff;">
+            질문을 입력하세요…
+          </div>
+          <button style="background:#5464ff;color:white;border:none;border-radius:8px;padding:8px 16px;font-size:14px;cursor:pointer;font-weight:700;">전송</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>여기서 무엇을 관찰해야 하나</h3>
+<ol class="steps">
+  <li><strong>Top-K 슬라이더를 바꿔보세요.</strong> K=1일 때와 K=5일 때 답변 품질이 어떻게 달라지는지 비교합니다.</li>
+  <li><strong>①검색된 청크를 펼치세요.</strong> 점수(0~1)가 높을수록 질문과 더 유사한 벡터입니다. 가장 높은 청크가 정말 관련 있는 내용인지 확인하세요.</li>
+  <li><strong>②최종 프롬프트를 펼치세요.</strong> 모델이 진짜로 받은 컨텍스트가 이것입니다. "왜 이런 답이 나왔나"는 항상 여기에 원인이 있습니다.</li>
+  <li><strong>모호한 질문을 넣어보세요.</strong> 예: "전략 써줘". 청크 점수가 낮고 답변이 불명확해집니다 — 이것이 RAG의 한계입니다.</li>
+  <li>같은 질문을 한 뒤 다음 섹션의 <strong>Phoenix</strong>로 넘어가 트레이스를 해부하세요.</li>
+</ol>
+
+<div class="box hypo">
+  <span class="tag">가설 만들기</span>
+  <p>청크 점수가 0.5 이하인 결과만 나왔다면, 그 청크가 답변에 포함됐나요? "모델은 낮은 점수 청크도 충실히 반영한다"는 가설을 세우고 실험해 보세요. Phoenix에서 프롬프트 토큰 수도 함께 확인하면 더 정확합니다.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 4: Phoenix로 해부하기
+     ═══════════════════════════════════════════════ -->
+<h2>Phoenix로 해부하기 <span class="mock-label">재현 목업</span></h2>
+
+<p>Streamlit에서 질문을 날린 직후 <code class="inline">http://localhost:16006</code>을 열면 트레이스가 기록돼 있습니다.</p>
+
+<div class="box measured">
+  <span class="tag">실제 확인</span>
+  <p>이 랩에서 직접 확인한 사실: Streamlit으로 질문할 때마다 Phoenix의 <strong>traceCount가 증가</strong>하고, 컨테이너 로그에 <code class="inline">POST /v1/traces 200</code>이 찍힙니다. 컨테이너명은 <code class="inline">magicjar-slm-phoenix</code>입니다.</p>
+  <p><code class="inline">docker logs magicjar-slm-phoenix --tail 20</code>으로 직접 확인할 수 있습니다.</p>
+</div>
+
+<div class="browser">
+  <div class="bar">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="url">localhost:16006</span>
+  </div>
+  <div class="body dark">
+    <!-- Phoenix 헤더 -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;border-bottom:1px solid #2a2f3c;padding-bottom:10px;">
+      <div style="font-size:20px;font-weight:800;color:#a78bfa;">🔮 Phoenix</div>
+      <div style="background:#1e222e;border:1px solid #3a3f55;border-radius:6px;padding:3px 10px;font-size:12px;color:#9aa3b2;">Project: <strong style="color:#e6e9ef;">default</strong></div>
+      <div style="background:#122019;border:1px solid #2f5043;border-radius:6px;padding:3px 10px;font-size:12px;color:#7ee787;">● RUNNING</div>
+    </div>
+
+    <!-- 통계 행 -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+      <div style="background:#1e222e;border:1px solid #2a2f3c;border-radius:8px;padding:10px;">
+        <div style="font-size:11px;color:#9aa3b2;margin-bottom:4px;">Total Traces</div>
+        <div style="font-size:22px;font-weight:800;color:#6ea8fe;">17</div>
+      </div>
+      <div style="background:#1e222e;border:1px solid #2a2f3c;border-radius:8px;padding:10px;">
+        <div style="font-size:11px;color:#9aa3b2;margin-bottom:4px;">Total Spans</div>
+        <div style="font-size:22px;font-weight:800;color:#6ea8fe;">51</div>
+      </div>
+      <div style="background:#1e222e;border:1px solid #2a2f3c;border-radius:8px;padding:10px;">
+        <div style="font-size:11px;color:#9aa3b2;margin-bottom:4px;">Avg Latency</div>
+        <div style="font-size:22px;font-weight:800;color:#7ee787;">2.3s</div>
+      </div>
+      <div style="background:#1e222e;border:1px solid #2a2f3c;border-radius:8px;padding:10px;">
+        <div style="font-size:11px;color:#9aa3b2;margin-bottom:4px;">Errors</div>
+        <div style="font-size:22px;font-weight:800;color:#ff7b72;">0</div>
+      </div>
+    </div>
+
+    <!-- 트레이스 목록 -->
+    <div style="background:#1e222e;border:1px solid #2a2f3c;border-radius:8px;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 80px;gap:0;padding:8px 12px;border-bottom:1px solid #2a2f3c;font-size:11px;color:#9aa3b2;font-weight:700;letter-spacing:.04em;">
+        <div>NAME / INPUT</div><div>LATENCY</div><div>TOKENS</div><div>STATUS</div>
+      </div>
+      <!-- 트레이스 행 1 (선택됨) -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 80px;gap:0;padding:9px 12px;border-bottom:1px solid #2a2f3c;background:#1b2033;cursor:pointer;">
+        <div>
+          <div style="font-size:13px;color:#e6e9ef;font-weight:600;">rag_query</div>
+          <div style="font-size:11px;color:#9aa3b2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">FVG 전략에서 포지션 진입 조건은 어떻게 설정하나요?</div>
+        </div>
+        <div style="font-size:13px;color:#7ee787;align-self:center;">2.14 s</div>
+        <div style="font-size:13px;color:#ffd9a8;align-self:center;">487</div>
+        <div style="align-self:center;"><span style="background:#122019;color:#7ee787;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;">OK</span></div>
+      </div>
+      <!-- 트레이스 행 2 -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr 80px;gap:0;padding:9px 12px;border-bottom:1px solid #2a2f3c;cursor:pointer;">
+        <div>
+          <div style="font-size:13px;color:#e6e9ef;">rag_query</div>
+          <div style="font-size:11px;color:#9aa3b2;">오더블록 감지 로직 어디에 있어?</div>
+        </div>
+        <div style="font-size:13px;color:#7ee787;align-self:center;">1.88 s</div>
+        <div style="font-size:13px;color:#ffd9a8;align-self:center;">392</div>
+        <div style="align-self:center;"><span style="background:#122019;color:#7ee787;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;">OK</span></div>
+      </div>
+    </div>
+
+    <!-- 트레이스 상세 (펼침) -->
+    <div style="margin-top:16px;background:#1e222e;border:1px solid #3a3f55;border-radius:8px;padding:14px;">
+      <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:10px;">▶ Trace: rag_query — 2.14s 총 3 스팬</div>
+
+      <!-- 타임라인 -->
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <!-- Root span -->
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:110px;font-size:11px;color:#9aa3b2;text-align:right;">rag_query</div>
+          <div style="flex:1;height:20px;background:#2a2f3c;border-radius:4px;position:relative;">
+            <div style="position:absolute;left:0;top:0;width:100%;height:100%;background:linear-gradient(90deg,#4a5568,#5464a8);border-radius:4px;opacity:.7;display:flex;align-items:center;padding-left:8px;font-size:10px;color:#e6e9ef;">2.14 s</div>
+          </div>
+        </div>
+        <!-- Retrieve span -->
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:110px;font-size:11px;color:#6ea8fe;text-align:right;">retrieve</div>
+          <div style="flex:1;height:20px;background:#2a2f3c;border-radius:4px;position:relative;margin-left:20px;">
+            <div style="position:absolute;left:0;top:0;width:28%;height:100%;background:linear-gradient(90deg,#1e4a7a,#2a5f9e);border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:10px;color:#6ea8fe;">0.31 s · top-3</div>
+          </div>
+        </div>
+        <!-- LLM span -->
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:110px;font-size:11px;color:#7ee787;text-align:right;">llm</div>
+          <div style="flex:1;height:20px;background:#2a2f3c;border-radius:4px;position:relative;margin-left:20px;">
+            <div style="position:absolute;left:28%;top:0;width:72%;height:100%;background:linear-gradient(90deg,#0d3320,#1a5c3c);border-radius:4px;display:flex;align-items:center;padding-left:8px;font-size:10px;color:#7ee787;">1.83 s · 487 tokens</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- retrieve 스팬 상세 -->
+      <div style="margin-top:12px;background:#171a23;border:1px solid #2a2f3c;border-radius:6px;padding:10px 12px;">
+        <div style="font-size:11px;font-weight:700;color:#6ea8fe;margin-bottom:6px;">🔍 retrieve 스팬 상세</div>
+        <div style="font-size:11px;color:#9aa3b2;margin-bottom:4px;">검색된 문서 · score</div>
+        <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;font-family:ui-monospace,Menlo,monospace;">
+          <div style="display:flex;gap:10px;"><span style="color:#ffd9a8;">strategies/fvg_strategy.py:42</span><span style="color:#7ee787;">0.8123</span></div>
+          <div style="display:flex;gap:10px;"><span style="color:#ffd9a8;">docs/strategy_guide.md:118</span><span style="color:#7ee787;">0.6311</span></div>
+          <div style="display:flex;gap:10px;"><span style="color:#ffd9a8;">config/strategy_params.yaml:7</span><span style="color:#7ee787;">0.5443</span></div>
+        </div>
+      </div>
+
+      <!-- LLM 스팬 상세 -->
+      <div style="margin-top:8px;background:#171a23;border:1px solid #2a2f3c;border-radius:6px;padding:10px 12px;">
+        <div style="font-size:11px;font-weight:700;color:#7ee787;margin-bottom:6px;">🤖 llm 스팬 상세</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:11px;">
+          <div><span style="color:#9aa3b2;">model</span><br><span style="color:#ffd9a8;">gemma3:4b</span></div>
+          <div><span style="color:#9aa3b2;">input tokens</span><br><span style="color:#7ee787;">412</span></div>
+          <div><span style="color:#9aa3b2;">output tokens</span><br><span style="color:#7ee787;">75</span></div>
+        </div>
+        <div style="margin-top:6px;font-size:11px;color:#9aa3b2;">prompt (일부)</div>
+        <div style="background:#0b0d13;border-radius:4px;padding:6px 8px;font-size:10.5px;font-family:ui-monospace,Menlo,monospace;color:#c8d0dd;white-space:pre-wrap;max-height:80px;overflow:auto;">System: 너는 magicJar 코드베이스 전문 어시스턴트야…
+Context: [1] strategies/fvg_strategy.py …
+User: FVG 전략에서 포지션 진입 조건은…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>클릭 순서 — Phoenix에서 한 질의를 해부하는 법</h3>
+<ol class="steps">
+  <li><code class="inline">http://localhost:16006</code>을 열면 트레이스 목록이 보입니다. 가장 위(최신)가 방금 Streamlit에서 넣은 질문입니다.</li>
+  <li>트레이스 행을 클릭하면 오른쪽(또는 아래)에 스팬 타임라인이 펼쳐집니다. <strong>retrieve</strong>와 <strong>llm</strong> 두 스팬이 핵심입니다.</li>
+  <li><strong>retrieve 스팬</strong>을 클릭하세요 → 검색된 문서 경로와 코사인 유사도 점수가 나옵니다. Streamlit의 ①청크 펼침과 일치하는지 확인하세요.</li>
+  <li><strong>llm 스팬</strong>을 클릭하세요 → 실제로 모델에 들어간 프롬프트 전체, 입력/출력 토큰 수, 지연 시간이 보입니다.</li>
+  <li>latency가 예상보다 크면 retrieve인지 llm인지 타임라인으로 원인을 좁힙니다. retrieve가 느리면 Qdrant 인덱스, llm이 느리면 ollama 모델을 점검합니다.</li>
+</ol>
+
+<div class="box concept">
+  <span class="tag">개념</span>
+  <p><strong>스팬(Span)</strong>은 분산 추적에서 "의미 있는 작업 단위" 하나입니다. RAG에서는 보통 retrieve, llm, 그리고 이 둘을 감싸는 root 스팬으로 구성됩니다. Phoenix는 OpenTelemetry 프로토콜로 이 스팬들을 수집해 시각화합니다.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 5: Qdrant 대시보드
+     ═══════════════════════════════════════════════ -->
+<h2>Qdrant 대시보드로 저장소 확인 <span class="mock-label">재현 목업</span></h2>
+
+<p><code class="inline">http://localhost:16333/dashboard</code>를 열면 벡터 DB에 실제로 무엇이 저장돼 있는지 볼 수 있습니다.</p>
+
+<div class="browser">
+  <div class="bar">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <span class="url">localhost:16333/dashboard</span>
+  </div>
+  <div class="body">
+    <!-- Qdrant 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-size:18px;font-weight:800;color:#cc2936;">▲ Qdrant</div>
+      <div style="font-size:12px;color:#666;">v1.9.x · localhost:16333</div>
+    </div>
+
+    <!-- Collections -->
+    <div style="font-size:14px;font-weight:700;color:#333;margin-bottom:10px;">Collections</div>
+    <div style="border:2px solid #5464ff;border-radius:10px;padding:14px;background:#f0f2ff;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <span style="font-size:16px;font-weight:800;color:#5464ff;">magicjar_slm</span>
+        <span style="background:#e8ffe8;color:#187a18;border:1px solid #b3e6b3;border-radius:5px;padding:1px 8px;font-size:11px;font-weight:700;">● green</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+        <div style="background:#fff;border:1px solid #dde;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:#888;margin-bottom:4px;">Points</div>
+          <div style="font-size:24px;font-weight:800;color:#5464ff;">1,095</div>
+        </div>
+        <div style="background:#fff;border:1px solid #dde;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:#888;margin-bottom:4px;">Vector Dim</div>
+          <div style="font-size:24px;font-weight:800;color:#5464ff;">1024</div>
+        </div>
+        <div style="background:#fff;border:1px solid #dde;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:#888;margin-bottom:4px;">Distance</div>
+          <div style="font-size:18px;font-weight:800;color:#cc2936;">Cosine</div>
+        </div>
+        <div style="background:#fff;border:1px solid #dde;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:11px;color:#888;margin-bottom:4px;">Status</div>
+          <div style="font-size:16px;font-weight:800;color:#187a18;">Green</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 포인트 목록 -->
+    <div style="font-size:13px;font-weight:700;color:#333;margin-bottom:8px;">Points (예시)</div>
+    <div style="border:1px solid #dde;border-radius:8px;overflow:hidden;">
+      <div style="display:grid;grid-template-columns:60px 2fr 1fr;background:#f0f2f6;padding:7px 12px;font-size:11px;color:#555;font-weight:700;border-bottom:1px solid #dde;">
+        <div>ID</div><div>PAYLOAD (일부)</div><div>VECTOR</div>
+      </div>
+      <!-- Point 1 (펼쳐진 상태) -->
+      <div style="border-bottom:1px solid #dde;">
+        <div style="display:grid;grid-template-columns:60px 2fr 1fr;padding:8px 12px;font-size:12px;background:#f9f0ff;cursor:pointer;">
+          <div style="color:#5464ff;font-weight:700;">42</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;color:#333;font-size:11px;">file_path: strategies/fvg_strategy.py</div>
+          <div style="color:#888;font-size:11px;">[0.021, -0.134, …]</div>
+        </div>
+        <!-- 펼친 상세 -->
+        <div style="background:#fafafa;border-top:1px solid #eee;padding:10px 14px;font-size:11px;font-family:ui-monospace,Menlo,monospace;color:#444;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <div style="color:#888;margin-bottom:4px;">Payload</div>
+              <pre style="background:#f0f0f5;border-radius:6px;padding:8px;margin:0;font-size:11px;">{
+  "file_path": "strategies/fvg_strategy.py",
+  "lines": "42-71",
+  "kind": "code",
+  "chunk_idx": 3
+}</pre>
+            </div>
+            <div>
+              <div style="color:#888;margin-bottom:4px;">Vector (앞 8차원)</div>
+              <pre style="background:#f0f0f5;border-radius:6px;padding:8px;margin:0;font-size:11px;">[
+  0.0213, -0.1342,
+  0.0891,  0.2134,
+  -0.0456, 0.1782,
+  0.0934, -0.0621,
+  … (1024차원)
+]</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Point 2 -->
+      <div style="display:grid;grid-template-columns:60px 2fr 1fr;padding:8px 12px;font-size:12px;border-bottom:1px solid #dde;cursor:pointer;">
+        <div style="color:#5464ff;font-weight:700;">43</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;color:#333;font-size:11px;">file_path: docs/strategy_guide.md</div>
+        <div style="color:#888;font-size:11px;">[0.087, 0.043, …]</div>
+      </div>
+      <!-- Point 3 -->
+      <div style="display:grid;grid-template-columns:60px 2fr 1fr;padding:8px 12px;font-size:12px;cursor:pointer;">
+        <div style="color:#5464ff;font-weight:700;">44</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;color:#333;font-size:11px;">file_path: config/strategy_params.yaml</div>
+        <div style="color:#888;font-size:11px;">[-0.034, 0.198, …]</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Qdrant에서 무엇을 확인하나</h3>
+<ol class="steps">
+  <li><code class="inline">http://localhost:16333/dashboard</code>를 열고 <strong>magicjar_slm</strong> 컬렉션을 클릭하세요.</li>
+  <li>상단 통계에서 <strong>1,095 포인트, 차원 1024, Cosine 거리, 상태 green</strong>을 확인합니다. 이것이 벡터 인덱스의 현재 상태입니다.</li>
+  <li>아무 포인트나 클릭하면 <strong>payload</strong>(<code class="inline">file_path</code>, <code class="inline">lines</code>, <code class="inline">kind</code>)와 <strong>실제 벡터값</strong>(1024개 float)이 보입니다.</li>
+  <li>Phoenix의 retrieve 스팬에서 나온 경로(<code class="inline">strategies/fvg_strategy.py:42</code>)를 Qdrant에서 검색해 payload가 일치하는지 대조해 보세요.</li>
+  <li>"청크가 왜 검색됐나"를 의심할 때, Qdrant에서 직접 벡터 유사도 검색(<strong>Search</strong> 탭)을 해볼 수 있습니다.</li>
+</ol>
+
+<div class="box concept">
+  <span class="tag">개념</span>
+  <p>Qdrant에서 포인트 하나 = 청크 하나입니다. payload에는 원본 파일 경로와 줄 번호가 저장되고, 벡터에는 <code class="inline">nomic-embed-text</code>가 생성한 1024차원 임베딩이 저장됩니다. 검색할 때 Qdrant는 질문의 임베딩과 이 벡터들 사이의 <strong>코사인 유사도</strong>를 계산해 가장 가까운 top-K를 반환합니다.</p>
+</div>
+
+<hr>
+
+<!-- ═══════════════════════════════════════════════
+     섹션 6: 세 화면을 함께 쓰는 법
+     ═══════════════════════════════════════════════ -->
+<h2>세 화면을 함께 쓰는 법</h2>
+
+<p>각 화면을 따로 보는 것도 좋지만, 진짜 실력은 <strong>세 화면을 동시에 열고 하나의 질문을 추적</strong>할 때 생깁니다.</p>
+
+<div class="box analogy">
+  <span class="tag">워크플로우</span>
+  <p>같은 질문을 Streamlit에 입력 → Phoenix에서 그 트레이스를 해부 → 이상하면 Qdrant에서 원천 청크 확인</p>
+</div>
+
+<div class="flow">
+  <div class="node io">
+    <b>① Streamlit — 질문 입력</b>
+    <div class="sub"><code class="inline">localhost:18501</code> · "FVG 전략 진입 조건 알려줘"</div>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="node">
+    <b>② Streamlit — 결과 확인</b>
+    <div class="sub">①검색 청크 펼침: 점수 이상하게 낮다? 관련 없는 파일이 나왔다?<br>②프롬프트 펼침: 컨텍스트가 너무 짧거나 잘렸나?</div>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="node">
+    <b>③ Phoenix — 트레이스 해부</b>
+    <div class="sub"><code class="inline">localhost:16006</code> · retrieve 스팬 점수 & llm 스팬 토큰/지연 확인<br>retrieve가 0.3s 이상이면 인덱스 문제, llm이 2s 이상이면 모델 문제</div>
+  </div>
+  <div class="arrow">↓</div>
+  <div class="node io">
+    <b>④ Qdrant — 원천 확인 (의심 청크만)</b>
+    <div class="sub"><code class="inline">localhost:16333/dashboard</code> · 해당 포인트 payload 열기<br>file_path, lines, kind가 예상과 다르면 → 인덱싱 파이프라인 점검</div>
+  </div>
+</div>
+
+<div class="grid2">
+  <div class="box hypo">
+    <span class="tag">가설 예시 A</span>
+    <p>"답변이 엉뚱하다" → Streamlit ①청크를 보니 점수가 모두 0.4 이하. → Phoenix retrieve 스팬에서 최고 점수 확인. → Qdrant에서 해당 파일을 검색하니 청크가 너무 길게 잘렸음(payload lines 범위 400줄). → <strong>청크 크기 조정</strong>이 필요하다는 가설.</p>
+  </div>
+  <div class="box hypo">
+    <span class="tag">가설 예시 B</span>
+    <p>"응답이 너무 느리다" → Streamlit은 3초 이상. → Phoenix 타임라인에서 llm 스팬이 2.8s. → retrieve는 0.2s로 정상. → 결론: ollama 모델 양자화 수준을 낮추거나 <strong>다른 모델로 교체</strong>해야 한다는 가설.</p>
+  </div>
+</div>
+
+<h3>빠른 진단 치트시트</h3>
+
+<table>
+  <thead>
+    <tr><th>증상</th><th>먼저 볼 화면</th><th>확인 포인트</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>답변이 관련 없음</td>
+      <td>Streamlit ①청크</td>
+      <td>점수 &lt; 0.5, 파일 경로 이상</td>
+    </tr>
+    <tr>
+      <td>청크 경로는 맞는데 답변이 이상함</td>
+      <td>Streamlit ②프롬프트</td>
+      <td>컨텍스트가 잘렸거나 빈 줄만 있음</td>
+    </tr>
+    <tr>
+      <td>속도가 느림</td>
+      <td>Phoenix 타임라인</td>
+      <td>retrieve vs llm 중 어느 스팬이 긴지</td>
+    </tr>
+    <tr>
+      <td>특정 파일 청크가 항상 안 나옴</td>
+      <td>Qdrant 대시보드</td>
+      <td>해당 파일 포인트가 존재하는지 검색</td>
+    </tr>
+    <tr>
+      <td>트레이스가 Phoenix에 안 쌓임</td>
+      <td>docker logs</td>
+      <td><code class="inline">docker logs magicjar-slm-phoenix --tail 20</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="box measured">
+  <span class="tag">이 챕터에서 직접 확인된 사실</span>
+  <p>
+    • Streamlit: <code class="inline">localhost:18501</code> — 질문 입력, top-k 슬라이더, 청크 펼침, 프롬프트 펼침, 답변 모두 정상 동작.<br>
+    • Phoenix: <code class="inline">localhost:16006</code> — 질의마다 <code class="inline">POST /v1/traces 200</code> 확인, traceCount 증가, retrieve+llm 스팬 정상 기록.<br>
+    • Qdrant: <code class="inline">localhost:16333/dashboard</code> — 컬렉션 <code class="inline">magicjar_slm</code>, 포인트 1,095개, 벡터 차원 1024, 거리 Cosine, 상태 green.
+  </p>
+</div>
+
+<nav class="chapter-nav">
+  <a href="ch02-파이프라인.html"><span class="dir">← 이전</span>2장 · 파이프라인</a>
+  <a href="ch04-측정과가설.html"><span class="dir">다음 →</span>4장 · 측정·가설</a>
+</nav>
+</div>
+</body>
+</html>
