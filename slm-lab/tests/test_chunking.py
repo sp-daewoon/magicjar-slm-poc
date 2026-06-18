@@ -22,8 +22,13 @@ def test_code_splits_on_top_level_declarations():
     chunks = chunk_code(text, "X.kt")
     heads = [c.text.splitlines()[0] for c in chunks]
     assert any(h.startswith("fun a") for h in heads)
-    assert any(h.startswith("class B") for h in heads)
     assert all(c.kind == "code" for c in chunks)
+    # class B must NOT be fragmented: its chunk includes the inner method body
+    class_b = [c for c in chunks if c.text.splitlines()[0].startswith("class B")]
+    assert len(class_b) == 1
+    assert "fun inner()" in class_b[0].text
+    # the indented inner declaration must not create its own top-level chunk
+    assert not any(h.lstrip().startswith("fun inner") for h in heads)
 
 
 def test_chunk_file_dispatches_by_extension(tmp_path: Path):
