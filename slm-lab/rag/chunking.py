@@ -46,8 +46,9 @@ def chunk_markdown(text: str, file_path: str) -> list[Chunk]:
 
 def chunk_code(text: str, file_path: str) -> list[Chunk]:
     def is_decl(ln: str) -> bool:
-        s = ln.lstrip()
-        return any(s.startswith(p) for p in _CODE_DECL_PREFIXES)
+        if not ln or ln[0].isspace():
+            return False  # top-level only — ignore indented inner declarations
+        return any(ln.startswith(p) for p in _CODE_DECL_PREFIXES)
 
     return _split_on(text, file_path, "code", is_decl)
 
