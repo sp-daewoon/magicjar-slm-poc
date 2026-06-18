@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>부록 · 실행 가이드 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+<a href="guide-실행가이드.html">부록 실행 가이드</a>
+</div></nav>
+
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Appendix · 실행 가이드</div>
+  <h1>처음부터 끝까지 직접 돌려보기</h1>
+  <p class="lead">복붙해서 그대로 따라 하면 되는 운영 안내서 — 띄우기·인덱싱·체험·관측·평가·정리, 그리고 막힐 때.</p>
+</header>
+
+<div class="box warn">
+  <span class="tag">⚠ 가장 먼저: 작업 디렉토리</span>
+  <p>모든 명령은 기준 위치가 둘로 나뉜다. <strong>git/docker 명령은 레포 루트</strong>에서,
+  <strong>파이썬/스트림릿 명령은 <code class="inline">slm-lab/</code> 안</strong>에서 실행한다.
+  헷갈리면 항상 절대경로로 루트부터 잡아라:</p>
+  <pre class="code">cd /Users/ak-song/magicjar-slm-poc      # ← 항상 여기서 시작</pre>
+  <p>예를 들어 학습서를 열 때 <code class="inline">slm-lab/</code> 안에서
+  <code class="inline">open docs/학습/index.html</code> 을 치면 <em>"파일이 없습니다"</em>가 난다
+  (그 경로엔 <code class="inline">slm-lab/docs/...</code> 가 없으니까). 루트에서 열거나 절대경로를 쓰면 된다:</p>
+  <pre class="code">open /Users/ak-song/magicjar-slm-poc/docs/학습/index.html</pre>
+</div>
+
+<h2>0. 준비물 (한 번만)</h2>
+<table>
+  <tr><th>도구</th><th>확인 명령</th><th>없으면</th></tr>
+  <tr><td>Docker (데몬 실행 중)</td><td><code class="inline">docker info</code></td><td>Docker Desktop 실행</td></tr>
+  <tr><td>Ollama + gemma3:4b</td><td><code class="inline">ollama list</code></td><td><code class="inline">ollama serve</code> 후 <code class="inline">ollama pull gemma3:4b</code></td></tr>
+  <tr><td>uv (파이썬 패키지 관리자)</td><td><code class="inline">uv --version</code></td><td><code class="inline">brew install uv</code></td></tr>
+  <tr><td>claude CLI (평가 심판용)</td><td><code class="inline">which claude</code></td><td>평가(5번)만 필요. 없어도 1~4번은 동작</td></tr>
+</table>
+
+<div class="box concept">
+  <span class="tag">개념 · 무엇이 어디서 도나</span>
+  <p><strong>Ollama</strong>는 모델을 돌리는 엔진(생성 Gemma3:4b + 임베딩은 BGE-M3는 파이썬 쪽에서 로드).
+  <strong>Qdrant·Phoenix</strong>는 도커 컨테이너. <strong>RAG 코드/Streamlit</strong>은 <code class="inline">slm-lab/</code>의 파이썬.
+  이 셋이 따로 떠 있어야 전체가 돈다.</p>
+</div>
+
+<h2>1. 인프라 띄우기 (레포 루트에서)</h2>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc
+docker compose -f docker/docker-compose.slm-rag.yml up -d   # Qdrant(16333) + Phoenix(16006)
+ollama serve &amp;                                             # 이미 떠 있으면 생략
+ollama pull gemma3:4b                                       # 한 번만 (~3.3GB)</pre>
+<p>떴는지 확인:</p>
+<pre class="code">curl -s localhost:16333/healthz   &amp;&amp; echo " ← Qdrant OK"
+curl -s -o /dev/null -w "%{http_code}" localhost:16006 ; echo " ← Phoenix (200이면 OK)"
+curl -s localhost:11434/api/tags  &gt; /dev/null &amp;&amp; echo "Ollama OK"</pre>
+
+<h2>2. 파이썬 의존성 설치 (slm-lab 안에서)</h2>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc/slm-lab
+uv sync                                                     # 가상환경 + 라이브러리 설치</pre>
+
+<h2>3. 인덱싱 — 레포를 검색 가능한 형태로 (한 번, 또는 코드 바뀌면 다시)</h2>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc/slm-lab
+uv run python -m rag.indexing
+# 기대 출력: indexed files=71 chunks=1095  (처음엔 BGE-M3 다운로드로 몇 분 소요)</pre>
+<div class="box hypo">
+  <span class="tag">가설/메모</span>
+  <p>처음 실행은 BGE-M3(~2GB) 다운로드 때문에 느리다. 두 번째부터는 캐시되어 빠르다.
+  파일 수/청크 수가 0이면 <code class="inline">rag/config.py</code>의 <code class="inline">INCLUDE_DIRS</code> 경로가
+  실제 레포 구조와 맞는지 확인하라.</p>
+</div>
+
+<h2>4. 체험 & 관측</h2>
+<h3>4-1. Streamlit 챗 (눈으로 RAG 보기)</h3>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc/slm-lab
+uv run streamlit run rag/app.py --server.port 18501
+# 브라우저: http://localhost:18501  (질문 입력 → 답변 + 검색청크/점수 + 최종 프롬프트 펼침)</pre>
+<h3>4-2. Phoenix 트레이스 (현업식 해부)</h3>
+<p>브라우저에서 <a href="http://localhost:16006">http://localhost:16006</a> — 질문을 한 뒤 트레이스를 열면
+retrieve→LLM 스팬, 청크·점수·프롬프트·지연이 보인다. (자세한 화면은 <a href="ch03-직접보기.html">3장</a>.)</p>
+<h3>4-3. Qdrant 대시보드 (저장된 벡터)</h3>
+<p><a href="http://localhost:16333/dashboard">http://localhost:16333/dashboard</a> — 컬렉션 <code class="inline">magicjar_slm</code>,
+1,095 포인트, 차원 1024, Cosine.</p>
+<h3>4-4. 학습서(이 책) 열기</h3>
+<pre class="code">open /Users/ak-song/magicjar-slm-poc/docs/학습/index.html</pre>
+
+<h2>5. 평가 — Opus만큼인가 (선택, claude CLI 필요)</h2>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc/slm-lab
+uv run python -c "from eval.run_eval import run_eval; run_eval(limit=2)"   # 소규모 스모크(2문항)
+uv run python -m eval.run_eval                                            # 전체 30문항 (~30분)
+# 결과: slm-lab/eval/results.csv , results.md</pre>
+<div class="box warn">
+  <span class="tag">⚠ 알려진 한계 (정상 동작)</span>
+  <p>현재 의존성에서 <strong>Ragas 3지표는 NaN</strong>으로 나온다(ragas 라이브러리 import 버그를 try/except로
+  우아하게 강등). 이건 버그가 아니라 의도된 방어이며, <strong>지금의 실측 신호는 Opus 심판 점수(winner·gemma_score)</strong>다.
+  자세한 이유는 <a href="ch04-측정과가설.html">4장</a>.</p>
+</div>
+
+<h2>6. 정리(끄기)</h2>
+<pre class="code">cd /Users/ak-song/magicjar-slm-poc
+docker compose -f docker/docker-compose.slm-rag.yml down      # 컨테이너 정지 (데이터 볼륨은 유지)
+docker compose -f docker/docker-compose.slm-rag.yml down -v   # 볼륨까지 삭제(인덱스 초기화)
+# Streamlit/ollama는 실행 터미널에서 Ctrl+C</pre>
+
+<h2>막힐 때 (Troubleshooting)</h2>
+<table>
+  <tr><th>증상</th><th>원인</th><th>해결</th></tr>
+  <tr><td><code class="inline">open ... 파일이 없습니다</code></td><td>cwd가 slm-lab/ 안</td><td>루트로 이동하거나 절대경로 사용</td></tr>
+  <tr><td><code class="inline">ModuleNotFoundError: rag</code></td><td>slm-lab 밖에서 실행</td><td><code class="inline">cd slm-lab</code> 후 <code class="inline">uv run</code></td></tr>
+  <tr><td>Streamlit 답변이 안 옴</td><td>Ollama 미기동 / 모델 없음</td><td><code class="inline">ollama serve</code>, <code class="inline">ollama pull gemma3:4b</code></td></tr>
+  <tr><td>검색 결과 0개</td><td>인덱싱 안 됨</td><td>3번 인덱싱 재실행, Qdrant 컬렉션 확인</td></tr>
+  <tr><td>Phoenix에 트레이스 없음</td><td>질의 전 / 컨테이너 down</td><td>질문 한 번 보내고 새로고침, <code class="inline">docker ps</code></td></tr>
+  <tr><td>Ragas 지표 NaN</td><td>알려진 한계(위 5번)</td><td>정상. Opus 심판 점수로 판단</td></tr>
+  <tr><td>포트 충돌</td><td>다른 스택이 16333/16006/18501 점유</td><td>해당 스택 종료 또는 compose 포트 변경</td></tr>
+</table>
+
+<div class="box concept">
+  <span class="tag">한 줄 요약 (복붙용 풀세트)</span>
+  <pre class="code">cd /Users/ak-song/magicjar-slm-poc &amp;&amp; docker compose -f docker/docker-compose.slm-rag.yml up -d
+cd slm-lab &amp;&amp; uv sync &amp;&amp; uv run python -m rag.indexing &amp;&amp; uv run streamlit run rag/app.py --server.port 18501</pre>
+</div>
+
+<nav class="chapter-nav">
+  <a href="ch04-측정과가설.html"><span class="dir">← 이전</span>4장 · 측정·가설</a>
+  <a href="index.html"><span class="dir">목차 →</span>책 표지로</a>
+</nav>
+</div>
+</body>
+</html>
