@@ -42,7 +42,7 @@ def answer(query: str, top_k: int = config.DEFAULT_TOP_K) -> RagResult:
     t0 = time.perf_counter()
     retrieved = retrieve(query, top_k=top_k)
     prompt = build_prompt(query, retrieved)
-    ans = generate(query, retrieved)
+    ans = generate(prompt)
     latency_ms = int((time.perf_counter() - t0) * 1000)
     return RagResult(
         query=query, retrieved=retrieved, prompt=prompt, answer=ans, latency_ms=latency_ms

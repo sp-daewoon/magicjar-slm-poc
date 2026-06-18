@@ -23,11 +23,10 @@ def build_prompt(query: str, retrieved: list[Retrieved]) -> str:
     )
 
 
-def generate(query: str, retrieved: list[Retrieved]) -> str:
+def generate(prompt: str) -> str:
     llm = Ollama(
         model=config.GEN_MODEL,
         base_url=config.OLLAMA_URL,
         request_timeout=config.REQUEST_TIMEOUT,
     )
-    prompt = build_prompt(query, retrieved)
     return str(llm.complete(prompt))
