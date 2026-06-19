@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5장 · 전체 평가 결과 — magicJar SLM Lab 학습서</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+<a class="home" href="index.html">📘 magicJar SLM Lab 학습서</a><span class="sep">›</span>
+<a href="ch01-큰그림.html">1장 큰 그림</a>
+<a href="ch02-파이프라인.html">2장 파이프라인</a>
+<a href="ch03-직접보기.html">3장 직접 보기</a>
+<a href="ch04-측정과가설.html">4장 측정·가설</a>
+<a href="ch05-전체평가결과.html">5장 평가 결과</a>
+<a href="guide-실행가이드.html">부록 실행 가이드</a>
+</div></nav>
+<div class="wrap">
+<header class="chapter-head">
+  <div class="kicker">Chapter 5</div>
+  <h1>전체 평가 결과 &amp; 해석: 30문항을 돌려보니</h1>
+  <p class="lead">처음으로 30문항을 전부 돌린 진짜 결과 — 숫자보다 더 큰 교훈은 "측정 자체가 어렵다"였다.</p>
+</header>
+
+<!-- ─── 1. 무엇을 돌렸나 ─── -->
+<section>
+  <h2>1. 무엇을 돌렸나</h2>
+
+  <p>4장에서 설계한 평가 파이프라인을 실제로 <strong>30문항 전부</strong>에 돌렸습니다. 각 문항마다 세 번의 LLM 호출이 연결됩니다:</p>
+
+  <div class="flow">
+    <span>① Gemma + RAG → 답변 생성</span>
+    <span>② Opus → 같은 질문에 정답 답변 생성</span>
+    <span>③ Opus → 두 답변 비교 심판 (점수 + 승자)</span>
+  </div>
+
+  <p>문항 30개 × 3회 = 90회 LLM 호출이 이론상 필요합니다. 실제로는 Gemma 호출 30회 + Opus 호출 60회 (답변 30 + 심판 30) 구조입니다. 강건화된 러너(<code class="inline">eval_runner.py</code>)는 재시도 로직(최대 2회, 각 300초 타임아웃)을 갖추고 있었고 <strong>30문항 전부를 완주했습니다</strong>.</p>
+
+  <p>아래는 평가가 끝난 뒤 생성된 <code class="inline">results.md</code>의 Summary 섹션을 그대로 옮긴 것입니다:</p>
+
+<pre class="code"># RAG Phase 1 Eval
+
+## Summary
+
+- n_total: 30
+- n_judged: 10
+- n_error: 20
+- gemma_win_rate: 0.000
+- opus_win_rate: 1.000
+- tie_rate: 0.000
+- avg_gemma_score: 2.800
+- avg_faithfulness: NaN
+- avg_answer_relevancy: NaN
+- avg_context_precision: NaN
+- avg_latency_ms: 35326.533</pre>
+
+  <p>숫자가 처음엔 이상해 보입니다. n_total=30인데 n_judged=10뿐입니다. 그리고 세 개의 Ragas 지표는 전부 NaN입니다. 바로 이것이 이 장의 핵심 이야기입니다.</p>
+</section>
+
+<!-- ─── 2. 큰 그림 숫자 ─── -->
+<section>
+  <h2>2. 큰 그림 숫자</h2>
+
+  <div class="box measured">
+    <span class="tag">실측치</span>
+    <p>이 숫자들은 실제 실행에서 나온 값입니다. 좋아 보이도록 선택하거나 가공하지 않았습니다.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>지표</th>
+          <th>값</th>
+          <th>비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>전체 문항 수</td>
+          <td>30</td>
+          <td>system 17 + dsl 13</td>
+        </tr>
+        <tr>
+          <td>심판까지 완료된 문항</td>
+          <td><strong>10</strong></td>
+          <td>q01 ~ q10</td>
+        </tr>
+        <tr>
+          <td>에러로 심판 불가 문항</td>
+          <td><strong>20</strong></td>
+          <td>q11 ~ q30</td>
+        </tr>
+        <tr>
+          <td>Opus 승률 (채점된 10건 기준)</td>
+          <td>100%</td>
+          <td>Gemma 0승</td>
+        </tr>
+        <tr>
+          <td>Gemma 평균 점수 (채점된 10건)</td>
+          <td>2.8 / 5</td>
+          <td>분포: 2점×3, 3점×6, 4점×1</td>
+        </tr>
+        <tr>
+          <td>Ragas 지표 (faithfulness 등)</td>
+          <td>NaN</td>
+          <td>4장부터 이어진 import 제한</td>
+        </tr>
+        <tr>
+          <td>평균 지연 (문항당)</td>
+          <td>약 35.3초</td>
+          <td>Gemma + Opus 답변 + Opus 심판 합산</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─── 3. 가장 큰 발견: 20문항이 실패했다 ─── -->
+<section>
+  <h2>3. 가장 큰 발견: 20문항이 실패했다</h2>
+
+  <div class="box warn">
+    <span class="tag">주의</span>
+    <p><strong>20문항(67%)은 심판 점수가 없습니다.</strong> 이것은 모델 품질 문제가 아니라 <strong>측정 인프라 문제</strong>입니다. Gemma가 나쁜 답을 해서가 아니라, Opus 심판 호출이 실패해서 점수 자체를 기록하지 못했습니다.</p>
+  </div>
+
+  <p>무슨 일이 벌어졌는지 구체적으로 보겠습니다.</p>
+
+  <p>각 문항에 대해 Opus를 두 번 호출합니다 — 답변 1회 + 심판 1회. 30문항이면 <strong>60회의 순차 Opus 호출</strong>이 발생합니다. 우리가 쓴 Opus "다리"는 로컬 <code class="inline">claude</code> CLI를 <code class="inline">subprocess</code>로 호출하는 방식입니다. 재시도 설정은 최대 2번, 각 300초입니다.</p>
+
+  <p>q01 ~ q10은 성공했습니다. q11부터 Opus 호출이 연속으로 실패하기 시작했고, 재시도로도 회복하지 못했습니다. 에러 행에는 <code class="inline">winner=error</code>만 남았습니다.</p>
+
+  <p><strong>이 20건의 실패는 이 장에서 가장 중요한 발견입니다.</strong> 평가 점수가 낮게 나왔다거나 Gemma가 모든 문항에서 졌다는 것보다 훨씬 더 근본적인 문제입니다. "측정 인프라도 실험 대상"이라는 교훈입니다 — 측정 도구가 신뢰할 수 없으면, 측정 결과도 신뢰할 수 없습니다.</p>
+
+  <div class="box concept">
+    <span class="tag">개념</span>
+    <p><strong>측정 인프라도 실험 대상이다</strong>: 실험에서 모델(Gemma)만 시험대에 오른 것이 아닙니다. 평가 파이프라인 — Opus 다리, CLI subprocess, 재시도 로직, 직렬 호출 구조 — 도 함께 시험대에 올랐습니다. 그리고 이번에는 평가 파이프라인이 먼저 실패했습니다. 이것을 숨기지 않고 기록하는 것이 Phase 1의 진짜 가치입니다.</p>
+  </div>
+</section>
+
+<!-- ─── 4. 왜 실패했나 (가설) ─── -->
+<section>
+  <h2>4. 왜 실패했나 — 가설 세 가지</h2>
+
+  <div class="grid2">
+    <div class="box hypo">
+      <span class="tag">가설 A</span>
+      <p><strong>레이트 리밋 / 스로틀링</strong></p>
+      <p>Claude CLI는 내부적으로 Anthropic API를 호출합니다. 짧은 시간 안에 60회가 순차 발화되면 사용량 제한에 걸릴 수 있습니다. q01~q10이 성공하고 q11부터 연속 실패한 패턴은 "일정 호출 수 이후 지속 제한"과 일치합니다.</p>
+    </div>
+
+    <div class="box hypo">
+      <span class="tag">가설 B</span>
+      <p><strong>중첩 Claude 프로세스 경합</strong></p>
+      <p>평가 러너 자체가 Claude Code 환경 안에서 실행될 수 있습니다. 바깥 Claude 세션과 안쪽 <code class="inline">subprocess</code> Claude CLI가 같은 인증 토큰·소켓을 두고 경합하면 타임아웃이 길어집니다. 300초 타임아웃을 써도 못 살린 것은 일시적 멈춤이 아니라 지속 차단 때문일 가능성이 있습니다.</p>
+    </div>
+
+    <div class="box hypo">
+      <span class="tag">가설 C</span>
+      <p><strong>직렬 구조의 누적 지연</strong></p>
+      <p>문항당 평균 35.3초입니다. 10문항이면 약 353초입니다. 재시도 포함 시 이후 문항들은 누적 대기 시간이 폭발적으로 늘어납니다. 하나가 실패하고 600초(2×300s) 재시도 후 포기하면, 그 뒤 문항들은 더욱 불리한 시점에 호출됩니다.</p>
+    </div>
+  </div>
+
+  <p>세 가설 모두 "직렬 60회 subprocess CLI 호출"이라는 설계에서 비롯됩니다. 어느 한 가설만 맞는 게 아니라 셋이 복합적으로 작용했을 가능성이 높습니다.</p>
+</section>
+
+<!-- ─── 5. 다음엔 이렇게 ─── -->
+<section>
+  <h2>5. 다음엔 이렇게 — 측정 인프라 고치기</h2>
+
+  <p>모델 성능을 올리기 전에 먼저 <strong>평가 파이프라인을 신뢰할 수 있게</strong> 만들어야 합니다. 구체적인 개선 방향입니다:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>문제</th>
+        <th>개선 방향</th>
+        <th>기대 효과</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Opus를 문항당 2회 호출 (답변 + 심판)</td>
+        <td>답변+심판을 <strong>1회 프롬프트</strong>로 합치기</td>
+        <td>60회 → 30회로 절반</td>
+      </tr>
+      <tr>
+        <td>Opus 답변이 문항마다 반복 생성</td>
+        <td><strong>Opus 답변 캐싱</strong> (질문 해시 → 답변 파일)</td>
+        <td>재실행 시 Opus 호출 0회</td>
+      </tr>
+      <tr>
+        <td>연속 호출로 레이트 리밋 유발</td>
+        <td>호출 간 <strong>지수 백오프 + 지연</strong> 추가</td>
+        <td>제한 회피 가능성 상승</td>
+      </tr>
+      <tr>
+        <td>subprocess CLI 방식 — 불안정</td>
+        <td>CLI 대신 <strong>Anthropic Python SDK (API 직접)</strong> 사용</td>
+        <td>프로세스 경합 제거, 에러 투명화</td>
+      </tr>
+      <tr>
+        <td>직렬 처리 — 느리고 누적 실패</td>
+        <td>소규모 <strong>배치 병렬 처리</strong> (예: 5문항씩)</td>
+        <td>총 소요 시간 단축</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>이 중 "Opus 답변 캐싱"이 가장 즉각적인 효과를 냅니다. 캐시가 있으면 재실행 시 Gemma 호출 30회 + Opus 심판 호출 30회만 하면 됩니다. 답변 캐시를 git에 커밋해두면 팀원이 동일한 기준으로 결과를 재현할 수도 있습니다.</p>
+</section>
+
+<!-- ─── 6. 채점된 10문항 해석 ─── -->
+<section>
+  <h2>6. 채점된 10문항 해석</h2>
+
+  <h3>점수 분포</h3>
+
+  <p>채점된 10문항의 Gemma 점수 분포입니다 (5점 만점). 소표본(10개)이므로 경향으로만 읽어야 합니다.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>점수</th>
+        <th>문항 수</th>
+        <th>비율</th>
+        <th>점수 막대</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>2점</td>
+        <td>3</td>
+        <td>30%</td>
+        <td>
+          <div class="scorebar"><span style="width:40%"></span></div>
+          <span class="score-num">2.0</span>
+        </td>
+      </tr>
+      <tr>
+        <td>3점</td>
+        <td>6</td>
+        <td>60%</td>
+        <td>
+          <div class="scorebar"><span style="width:60%"></span></div>
+          <span class="score-num">3.0</span>
+        </td>
+      </tr>
+      <tr>
+        <td>4점</td>
+        <td>1</td>
+        <td>10%</td>
+        <td>
+          <div class="scorebar"><span style="width:80%"></span></div>
+          <span class="score-num">4.0</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>평균은 2.8점입니다:</p>
+  <div class="scorebar"><span style="width:56%"></span></div>
+  <span class="score-num">2.8 / 5</span>
+
+  <h3>카테고리별 방향성 (소표본 주의)</h3>
+
+  <p>채점된 10문항은 system 5개, dsl 5개로 고르게 나뉩니다. 점수를 카테고리별로 보면:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>카테고리</th>
+        <th>채점 문항</th>
+        <th>Gemma 점수 합계</th>
+        <th>평균</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>system</td>
+        <td>5 (q01~q05)</td>
+        <td>3+4+3+3+2 = 15</td>
+        <td>3.0</td>
+      </tr>
+      <tr>
+        <td>dsl</td>
+        <td>5 (q06~q10)</td>
+        <td>2+2+3+3+3 = 13</td>
+        <td>2.6</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p>system 질문(아키텍처·흐름)에서 Gemma가 약간 더 나은 경향이 있고, dsl 질문(구체 문법·예시)에서 더 약합니다. 이는 RAG 컨텍스트가 시스템 설계 문서를 더 잘 담고 있고, DSL 문법의 정확한 예시는 컨텍스트에 없을 수 있다는 가설을 지지합니다. 단, <strong>5문항씩의 소표본이므로 이 방향성은 Phase 2 확대 실험으로 검증이 필요합니다.</strong></p>
+
+  <h3>Opus가 전부 이긴 의미</h3>
+
+  <p>Opus 100% 승은 놀랍지 않습니다. Opus는 이 코드베이스 전체를 실시간으로 검색할 수 있는 도구까지 갖춘 상태이고, Gemma는 미리 만들어진 RAG 컨텍스트 조각만 봤습니다. 이번 평가의 목적은 "Gemma가 Opus를 이길 수 있는가"가 아니라 <strong>"Gemma + RAG의 기준선이 어디서 시작하는가"</strong>를 측정하는 것입니다. 2.8점이 그 기준선입니다. 다음 실험들이 이 숫자를 어디까지 올릴 수 있는지가 진짜 질문입니다.</p>
+</section>
+
+<!-- ─── 7. 문항별 표 ─── -->
+<section>
+  <h2>7. 문항별 결과 전체</h2>
+
+  <p>30문항 전체 결과입니다. <code class="inline">winner=error</code>는 Opus 호출 실패로 심판 점수가 없는 행입니다. 숨기지 않고 그대로 표기합니다.</p>
+
+  <div class="code scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>카테고리</th>
+        <th>질문 (요약)</th>
+        <th>승자</th>
+        <th>Gemma 점수</th>
+        <th>지연(ms)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>q01</td>
+        <td>system</td>
+        <td>전략리서치 AI 후보 발굴 전체 흐름</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>52,125</td>
+      </tr>
+      <tr>
+        <td>q02</td>
+        <td>system</td>
+        <td>StrategyResearchAiTextClient 인터페이스 역할·반환값</td>
+        <td>opus</td>
+        <td>4.0</td>
+        <td>21,689</td>
+      </tr>
+      <tr>
+        <td>q03</td>
+        <td>system</td>
+        <td>AI 후보 검증·필터링 후 사용자 노출 방식</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>25,710</td>
+      </tr>
+      <tr>
+        <td>q04</td>
+        <td>system</td>
+        <td>전략 빌더 AI 생성 입력·출력</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>45,853</td>
+      </tr>
+      <tr>
+        <td>q05</td>
+        <td>system</td>
+        <td>instrument matching 수행 단계</td>
+        <td>opus</td>
+        <td>2.0</td>
+        <td>28,525</td>
+      </tr>
+      <tr>
+        <td>q06</td>
+        <td>dsl</td>
+        <td>RSI 30 이하 매수 전략 DSL 표현</td>
+        <td>opus</td>
+        <td>2.0</td>
+        <td>38,518</td>
+      </tr>
+      <tr>
+        <td>q07</td>
+        <td>dsl</td>
+        <td>골든크로스 조건 DSL 표현</td>
+        <td>opus</td>
+        <td>2.0</td>
+        <td>36,911</td>
+      </tr>
+      <tr>
+        <td>q08</td>
+        <td>dsl</td>
+        <td>DSL 사용 가능 지표 종류</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>37,333</td>
+      </tr>
+      <tr>
+        <td>q09</td>
+        <td>dsl</td>
+        <td>DSL 파싱 실패 시 경고·에러 형태</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>51,922</td>
+      </tr>
+      <tr>
+        <td>q10</td>
+        <td>dsl</td>
+        <td>매수·매도 조건 함께 정의하는 DSL 구조</td>
+        <td>opus</td>
+        <td>3.0</td>
+        <td>44,473</td>
+      </tr>
+      <tr>
+        <td>q11</td>
+        <td>system</td>
+        <td>warnings 생성 시점·의미</td>
+        <td>error</td>
+        <td>—</td>
+        <td>47,245</td>
+      </tr>
+      <tr>
+        <td>q12</td>
+        <td>system</td>
+        <td>AI 프롬프트 구성 방식</td>
+        <td>error</td>
+        <td>—</td>
+        <td>39,888</td>
+      </tr>
+      <tr>
+        <td>q13</td>
+        <td>system</td>
+        <td>후보 아이템 상태값 종류·변화</td>
+        <td>error</td>
+        <td>—</td>
+        <td>31,268</td>
+      </tr>
+      <tr>
+        <td>q14</td>
+        <td>system</td>
+        <td>preset 추천 vs 일반 discovery 차이</td>
+        <td>error</td>
+        <td>—</td>
+        <td>27,075</td>
+      </tr>
+      <tr>
+        <td>q15</td>
+        <td>dsl</td>
+        <td>볼린저 밴드 하단 터치 매수 DSL</td>
+        <td>error</td>
+        <td>—</td>
+        <td>35,285</td>
+      </tr>
+      <tr>
+        <td>q16</td>
+        <td>dsl</td>
+        <td>거래량 급증 조건 DSL 표현</td>
+        <td>error</td>
+        <td>—</td>
+        <td>36,164</td>
+      </tr>
+      <tr>
+        <td>q17</td>
+        <td>system</td>
+        <td>SLM 출력이 해선 안 되는 동작</td>
+        <td>error</td>
+        <td>—</td>
+        <td>30,172</td>
+      </tr>
+      <tr>
+        <td>q18</td>
+        <td>system</td>
+        <td>MAGICJAR_MODE=MOCK 보장 내용</td>
+        <td>error</td>
+        <td>—</td>
+        <td>27,881</td>
+      </tr>
+      <tr>
+        <td>q19</td>
+        <td>dsl</td>
+        <td>AND/OR 복합 조건 DSL 문법</td>
+        <td>error</td>
+        <td>—</td>
+        <td>31,562</td>
+      </tr>
+      <tr>
+        <td>q20</td>
+        <td>dsl</td>
+        <td>특정 종목군 제한 DSL 표현</td>
+        <td>error</td>
+        <td>—</td>
+        <td>37,095</td>
+      </tr>
+      <tr>
+        <td>q21</td>
+        <td>system</td>
+        <td>AI discovery 결과 JSON 스키마</td>
+        <td>error</td>
+        <td>—</td>
+        <td>64,985</td>
+      </tr>
+      <tr>
+        <td>q22</td>
+        <td>system</td>
+        <td>malformed JSON 파싱 처리</td>
+        <td>error</td>
+        <td>—</td>
+        <td>24,281</td>
+      </tr>
+      <tr>
+        <td>q23</td>
+        <td>system</td>
+        <td>타임아웃·실패 처리 방식</td>
+        <td>error</td>
+        <td>—</td>
+        <td>43,391</td>
+      </tr>
+      <tr>
+        <td>q24</td>
+        <td>dsl</td>
+        <td>MACD 시그널 교차 매매 신호 DSL</td>
+        <td>error</td>
+        <td>—</td>
+        <td>31,594</td>
+      </tr>
+      <tr>
+        <td>q25</td>
+        <td>dsl</td>
+        <td>손절·익절 DSL 표현 가능 여부</td>
+        <td>error</td>
+        <td>—</td>
+        <td>30,411</td>
+      </tr>
+      <tr>
+        <td>q26</td>
+        <td>system</td>
+        <td>AiDiscoveryCard 표시 데이터</td>
+        <td>error</td>
+        <td>—</td>
+        <td>24,194</td>
+      </tr>
+      <tr>
+        <td>q27</td>
+        <td>system</td>
+        <td>사용자 선택 반영 위치</td>
+        <td>error</td>
+        <td>—</td>
+        <td>30,044</td>
+      </tr>
+      <tr>
+        <td>q28</td>
+        <td>dsl</td>
+        <td>이동평균선 기간 수정 DSL 위치</td>
+        <td>error</td>
+        <td>—</td>
+        <td>31,006</td>
+      </tr>
+      <tr>
+        <td>q29</td>
+        <td>system</td>
+        <td>SLM provider ollama 설정 키</td>
+        <td>error</td>
+        <td>—</td>
+        <td>23,366</td>
+      </tr>
+      <tr>
+        <td>q30</td>
+        <td>system</td>
+        <td>원본 magicJar 스택과 격리 방식</td>
+        <td>error</td>
+        <td>—</td>
+        <td>29,830</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ─── 8. 실제 답변 두 개 비교 ─── -->
+<section>
+  <h2>8. 실제 답변 두 개 비교</h2>
+
+  <p>채점된 10문항 중 가장 높은 점수(4점, q02)와 가장 낮은 점수(2점, q05)를 골라 실제 답변을 나란히 봅니다. 모델이 어디서 잘하고 어디서 무너지는지 직접 확인하는 것이 숫자보다 더 많은 것을 알려줍니다.</p>
+
+  <!-- q02: 고점 -->
+  <details>
+    <summary><strong>q02 · 점수 4/5 · system</strong> — StrategyResearchAiTextClient 인터페이스의 역할과 반환값은 무엇인가요?</summary>
+
+    <h4>Gemma 답변 (RAG 컨텍스트 사용)</h4>
+<pre class="code">StrategyResearchAiTextClient 인터페이스는 외부 AI 모델(Claude)에 프롬프트를
+전달하고 응답을 받는 역할을 합니다.
+
+역할:
+- AI 모델로부터 전략 관련 텍스트를 생성하도록 요청합니다.
+- AI 모델과의 통신 및 결과 반환을 위한 일관된 인터페이스를 제공합니다.
+
+반환값:
+- StrategyResearchAiTextResult 데이터 클래스를 반환합니다.
+  - provider: 응답을 생성한 AI 모델의 공급자 이름(예: "claude-cli")
+  - text: AI 모델로부터 받은 텍스트 응답 자체</pre>
+
+    <h4>Opus 답변 (코드 검색 도구 사용, 발췌)</h4>
+<pre class="code">## StrategyResearchAiTextClient의 역할과 반환값
+
+### 한 줄 요약
+이 인터페이스는 "프롬프트(문자열)를 받아 AI 텍스트 응답을 돌려주는 단일 경계"입니다.
+
+fun interface StrategyResearchAiTextClient {
+    fun complete(prompt: String): StrategyResearchAiTextResult
+}
+
+반환값 StrategyResearchAiTextResult:
+  val provider: String  // "claude-cli", "claude-cli-bridge"
+  val text: String      // AI가 생성한 원본 텍스트 (raw, 미가공)
+
+### 역할의 경계 — 무엇을 "하지 않는가"가 핵심
+프롬프트 빌드 / JSON 파싱 / instrument 매칭 / 검증은 전부 인터페이스 바깥
+(서비스)에 두고, 이 경계는 "텍스트를 받아오는 일"만 책임집니다.
+...(이하 구현체·실패 처리·설계 의도 상세 설명 생략)</pre>
+
+    <h4>왜 이 점수인가 — 해석</h4>
+    <p>Gemma 답(4점)은 핵심 사실을 정확히 맞혔습니다 — <code class="inline">provider</code>와 <code class="inline">text</code> 필드, 역할 설명 모두 RAG 컨텍스트에서 잘 추출됐습니다. 다만 "이 인터페이스가 하지 않는 것" (파싱·검증·매칭이 서비스 바깥에 있다는 설계 의도)은 설명하지 못했습니다. Opus는 실제 코드 라인 번호와 함께 구현체·실패 처리·provider 교체 전략까지 답했습니다. 4점은 "사실은 맞지만 깊이에서 차이"를 반영합니다. RAG가 제대로 된 컨텍스트를 찾아줄 때 Gemma가 어디까지 갈 수 있는지를 보여주는 최선의 사례입니다.</p>
+  </details>
+
+  <!-- q05: 저점 -->
+  <details>
+    <summary><strong>q05 · 점수 2/5 · system</strong> — instrument matching(종목 매칭)은 어느 단계에서 수행되나요?</summary>
+
+    <h4>Gemma 답변 (RAG 컨텍스트 사용)</h4>
+<pre class="code">instrument matching(종목 매칭)은 3-1. 본체 자동 매매 흐름 (오프라인 동작 — AI 호출 0)의
+단계 [3] Screener에서 수행됩니다.
+
+Screener는 KIS에서 가져온 instrument 영속 데이터와 DSL(전략)을 조합하여
+후보 종목을 생성합니다. 이 과정에서 매칭 기준이 적용되어 최종적으로 매치된
+종목만 랭킹 및 검증에 사용됩니다.</pre>
+
+    <h4>Opus 답변 (코드 검색 도구 사용, 발췌)</h4>
+<pre class="code">## 결론: 종목 매칭은 JSON 파싱 직후, 검증 직전 단계에서 수행됩니다
+
+전체 파이프라인 순서:
+프롬프트 빌드 → AI 호출 → JSON 파싱 → [종목 매칭] → 검증/로깅
+
+핵심 위치:
+- resolveInstrument() — StrategyResearchAiDiscoveryService.kt:851-876
+- ClaudeDiscoveryRawItem.toDto() — :823-849: 변환 시 resolveInstrument() 호출
+- parseItems() :775-802 로 JSON 파싱 → toDto(marketFilter) :348 호출 시 매칭
+
+매칭 전략 (2단계):
+1. 코드 우선 (:851-859): AI 출력 code가 있으면 findById(code)로 직접 조회
+2. 이름/코드 검색 (:861-874): [이름, 정규화 이름, 코드, 정규화 코드] 순으로 검색
+...(이하 생략)</pre>
+
+    <h4>왜 이 점수인가 — 해석</h4>
+    <p>Gemma 답(2점)은 <strong>틀린 위치</strong>를 가리켰습니다. "Screener 단계"라고 했는데, 실제 종목 매칭은 Screener(자동매매 흐름)가 아니라 <strong>AI 호출 직후 JSON 파싱 → DTO 변환 시점</strong>에 일어납니다. RAG 컨텍스트에 "Screener" 관련 문서가 들어있어서 그쪽으로 답변이 끌려간 것으로 보입니다 — RAG가 잘못된 컨텍스트를 주면 오히려 없는 것보다 나쁜 답이 나올 수 있다는 것을 보여주는 사례입니다. Opus는 코드를 직접 검색해 정확한 라인 번호와 2단계 매칭 전략(코드 우선 → 이름 검색)을 답했습니다. 2점의 의미: 방향이 크게 어긋났고 사용자가 이 답을 믿으면 잘못된 곳을 탐색하게 됩니다.</p>
+  </details>
+</section>
+
+<!-- ─── 9. 결론 & 예고 ─── -->
+<section>
+  <h2>9. 결론 &amp; 다음 챕터 예고</h2>
+
+  <div class="box concept">
+    <span class="tag">정리</span>
+    <p>이 장은 자랑이 아닙니다. Phase 1의 현실을 숫자로 마주한 기록입니다.</p>
+    <ul>
+      <li><strong>러너는 완주했다</strong> — 강건화 작업이 효과를 발휘했습니다.</li>
+      <li><strong>Gemma 기준선을 확인했다</strong> — 2.8/5, Opus 대비 0승. 이것이 개선의 출발점입니다.</li>
+      <li><strong>측정 인프라가 더 큰 문제였다</strong> — 20/30 실패는 모델보다 평가 파이프라인을 먼저 고쳐야 한다는 신호입니다.</li>
+      <li><strong>RAG 품질이 답변 품질을 결정한다</strong> — q02(4점)와 q05(2점)의 차이는 컨텍스트가 얼마나 적절하게 찾아졌는가에서 왔습니다.</li>
+    </ul>
+  </div>
+
+  <h3>진짜 다음 일</h3>
+
+  <p>이 기준선을 갖고 할 수 있는 실험이 세 갈래입니다:</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>단계</th>
+        <th>할 일</th>
+        <th>기대 질문</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>(a) 즉시</td>
+        <td>측정 인프라 안정화 — Opus 답변 캐싱, API 직접 호출, 배치</td>
+        <td>나머지 20문항을 제대로 채점할 수 있는가?</td>
+      </tr>
+      <tr>
+        <td>(b) Phase 2</td>
+        <td>RAG on/off A/B 비교, 청크 전략 실험, 컨텍스트 품질 개선</td>
+        <td>RAG가 실제로 점수를 올리는가? 얼마나?</td>
+      </tr>
+      <tr>
+        <td>(c) Phase 3</td>
+        <td>Gemma 증류 — magicJar 도메인 데이터로 파인튜닝</td>
+        <td>도메인 특화 소형 모델이 RAG 없이 Gemma 2.8을 넘을 수 있는가?</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box analogy">
+    <span class="tag">예고</span>
+    <p><strong>6장 (Phase 2)</strong>에서는 측정 인프라를 고치고 RAG 컨텍스트 전략을 바꿔가며 2.8점을 어디까지 올릴 수 있는지 실험합니다. <strong>7장 (Phase 3)</strong>에서는 증류 데이터셋을 만들고 Gemma를 파인튜닝해봅니다. 그 출발선이 오늘 여기서 찍혔습니다.</p>
+  </div>
+</section>
+
+<nav class="chapter-nav">
+  <a href="ch04-측정과가설.html"><span class="dir">← 이전</span>4장 · 측정·가설</a>
+  <a href="index.html"><span class="dir">목차 →</span>책 표지로</a>
+</nav>
+</div>
+</body>
+</html>

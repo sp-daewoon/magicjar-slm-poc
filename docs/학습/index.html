@@ -13,6 +13,7 @@
 <a href="ch02-파이프라인.html">2장 파이프라인</a>
 <a href="ch03-직접보기.html">3장 직접 보기</a>
 <a href="ch04-측정과가설.html">4장 측정·가설</a>
+<a href="ch05-전체평가결과.html">5장 평가 결과</a>
 <a href="guide-실행가이드.html">부록 실행 가이드</a>
 </div></nav>
 
@@ -61,6 +62,13 @@
         <div class="d">30문항 고정 평가 · LLM-as-judge · Ragas · 실제 스모크 결과 · 정직한 한계 · 결과를 설명하는 가설.</div>
       </span>
     </a>
+    <a href="ch05-전체평가결과.html">
+      <span class="num">05</span>
+      <span>
+        <div class="t">전체 평가 결과 &amp; 해석: 30문항을 돌려보니</div>
+        <div class="d">실제 30문항 평가 — 10문항 채점(Opus 100% 승, Gemma 2.8/5)·20문항은 측정 다리 타임아웃. "측정 인프라도 실험 대상"이라는 교훈.</div>
+      </span>
+    </a>
     <a href="guide-실행가이드.html">
       <span class="num">▶</span>
       <span>
@@ -69,14 +77,14 @@
       </span>
     </a>
     <a class="soon" href="#">
-      <span class="num">05</span>
+      <span class="num">06</span>
       <span>
         <div class="t">코드 분석 질문으로 확장 <span class="soon-tag">· Phase 2 예정</span></div>
         <div class="d">"이 저장 로직 왜 문제일까?" — 비에이전틱 RAG로 코드를 던져주고 분석시키기. 프롬프트 인젝션 하드닝.</div>
       </span>
     </a>
     <a class="soon" href="#">
-      <span class="num">06</span>
+      <span class="num">07</span>
       <span>
         <div class="t">증류: Opus 없이도 잘하게 <span class="soon-tag">· Phase 3 예정</span></div>
         <div class="d">RAG로 모은 (질문→Opus답) 쌍으로 Gemma 가중치를 조정해 RAG 의존을 줄이면서 품질 유지.</div>
@@ -88,7 +96,7 @@
     <span class="tag">지금까지의 실측 요약 (Phase 1)</span>
     <p>코퍼스 <strong>71개 파일 → 1,095개 청크</strong>를 BGE-M3(1024차원)로 임베딩해 Qdrant에 적재(status green).
     실제 질의에서 의미적으로 맞는 코드를 검색(예: "전략리서치 후보 발굴" → <code class="inline">StrategyResearchController.kt</code>, 코사인 0.63).
-    스모크 평가에서 Opus 정답지 대비 Gemma 평균 점수 <strong>3.0/5</strong>, 승률 0(아직 Opus 우세) — 개선의 출발선을 숫자로 확보했다.</p>
+    전체 30문항 평가에서 10문항이 채점됐고(Opus <strong>100%</strong> 승, Gemma 평균 <strong>2.8/5</strong>), 나머지 20문항은 측정 다리(claude CLI) 타임아웃으로 실패 — 개선의 출발선과 함께 "측정 인프라도 실험 대상"임을 배웠다(<a href="ch05-전체평가결과.html">5장</a>).</p>
   </div>
 
   <p class="meta-foot">magicJar SLM Lab · RAG Phase 1 · 모든 런타임 로컬/MOCK · AI는 설명·초안만, 매매 권한 없음</p>
